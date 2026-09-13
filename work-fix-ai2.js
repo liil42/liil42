@@ -1,0 +1,110 @@
+﻿const fs = require('fs');
+const path = 'server/src/ai.js';
+let t = fs.readFileSync(path, 'utf8');
+
+const s1 = t.indexOf('function friendlyError(error) {');
+const e1 = t.indexOf('function withStatus(message, status) {');
+if (s1 < 0 || e1 < 0) { console.error('LOCATE FAIL friendly'); process.exit(1); }
+const newFriendly = [
+"function friendlyError(error) {",
+"  const raw = String((error && error.message) || error || '');",
+"  if (/invalid api key|authentication|unauthorized|invalid_api_key|insufficient|balance|API Key/i.test(raw)) {",
+"    return 'AI 服务鉴权失败，请检查 API Key 是否正确、是否还有余额';",
+"  }",
+"  if (/aborted|timeout|timed out|ETIMEDOUT/i.test(raw)) return 'AI 服务响应超时，请稍后重试';",
+"  if (/fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket|network|UND_ERR/i.test(raw)) {",
+"    return '无法连接 AI 服务，请检查网络或接口地址';",
+"  }",
+"  if (/429|rate limit|too many/i.test(raw)) return 'AI 服务请求过于频繁，请稍后再试';",
+"  if (/50[0-9]|502|503|504/.test(raw)) return 'AI 服务暂时不可用，请稍后重试';",
+"  if (/JSON|json/i.test(raw)) return 'AI 返回内容格式异常，已自动重试，请再试一次';",
+"  if (/400/.test(raw)) return 'AI 请求参数有误，请检查代码内容后重试';",
+"  return 'AI 服务暂时不可用，请稍后重试';",
+"}",
+""
+].join('\n');
+t = t.slice(0, s1) + newFriendly + t.slice(e1);
+
+const s2 = t.indexOf('function extractJson(text) {');
+const e2 = t.indexOf('async function callAIJson(');
+if (s2 < 0 || e2 < 0) { console.error('LOCATE FAIL extract'); process.exit(1); }
+const newExtract = [
+"function stripCodeFence(text) {",
+"  return String(text || '')",
+"    .replace(/^\\s*```[a-zA-Z]*\\s*/g, '')",
+"    .replace(/\\s*```\\s*$/g, '')",
+"    .trim();",
+"}",
+"",
+"function extractBalanced(text, openChar, closeChar) {",
+"  const start = text.indexOf(openChar);",
+"  if (start < 0) return null;",
+"  let depth = 0;",
+"  let inString = false;",
+"  let quote = '';",
+"  let escaped = false;",
+"  for (let i = start; i < text.length; i += 1) {",
+"    const ch = text[i];",
+"    if (inString) {",
+"      if (escaped) { escaped = false; continue; }",
+"      if (ch === '\\\\') { escaped = true; continue; }",
+"      if (ch === quote) { inString = false; }",
+"      continue;",
+"    }",
+"    if (ch === '\"' || ch === \"'\") { inString = true; quote = ch; continue; }",
+"    if (ch === openChar) depth += 1;",
+"    else if (ch === closeChar) {",
+"      depth -= 1;",
+"      if (depth === 0) return text.slice(start, i + 1);",
+"    }",
+"  }",
+"  return null;",
+"}",
+"",
+"function repairJson(text) {",
+"  let value = stripCodeFence(String(text || ''));",
+"  value = value.replace(/[\\u201c\\u201d]/g, '\"').replace(/[\\u2018\\u2019]/g, \"'\");",
+"  value = value.replace(/,\\s*([}\\]] )/g, '$1');",
+"  value = value.replace(/,\\s*([}\\]] )/g, '$1');",
+"  value = value.replace(/,\\s*([}\\]] )/g, '$1');",
+"  return value;",
+"}",
+"",
+"function extractJson(text) {",
+"  const raw = String(text || '').trim();",
+"  if (!raw) throw new Error('AI 返回内容为空');",
+"",
+"  const candidates = [];",
+"  const fenced = stripCodeFence(raw);",
+"  candidates.push(fenced);",
+"  candidates.push(raw);",
+"",
+"  const balancedObj = extractBalanced(fenced, '{', '}');",
+"  if (balancedObj) candidates.push(balancedObj);",
+"  const balancedArr = extractBalanced(fenced, '[', ']');",
+"  if (balancedArr) candidates.push(balancedArr);",
+"",
+"  const firstBrace = fenced.indexOf('{');",
+"  const lastBrace = fenced.lastIndexOf('}');",
+"  if (firstBrace >= 0 && lastBrace > firstBrace) candidates.push(fenced.slice(firstBrace, lastBrace + 1));",
+"  const firstBracket = fenced.indexOf('[');",
+"  const lastBracket = fenced.lastIndexOf(']');",
+"  if (firstBracket >= 0 && lastBracket > firstBracket) candidates.push(fenced.slice(firstBracket, lastBracket + 1));",
+"",
+"  for (const candidate of candidates) {",
+"    if (!candidate) continue;",
+"    try {",
+"      return JSON.parse(candidate);",
+"    } catch (error) {",
+"      // 继续尝试下一种候选",
+"    }",
+"  }",
+"",
+"  throw new Error('AI 返回内容不是有效 JSON');",
+"}",
+"",
+""
+].join('\n');
+t = t.slice(0, s2) + newExtract + t.slice(e2);
+fs.writeFileSync(path, t, 'utf8');
+console.log('ai.js updated, length', t.length);

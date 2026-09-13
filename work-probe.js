@@ -1,0 +1,11 @@
+const fs = require("fs");
+const iconv = require("iconv-lite");
+const file = process.argv[2];
+const text = fs.readFileSync(file, "utf8");
+const idx = text.indexOf("h1>");
+const seg = text.slice(idx + 3, idx + 20);
+console.log("ORIG CODES:", [...seg].map(c => c.codePointAt(0).toString(16)).join(","));
+const bytes = iconv.encode(seg, "gbk");
+console.log("GBK LEN:", bytes.length, "HAS_Q:", bytes.includes(0x3f));
+const out = bytes.toString("utf8");
+console.log("OUT CODES:", [...out].map(c => c.codePointAt(0).toString(16)).join(","));
