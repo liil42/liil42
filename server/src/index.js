@@ -152,6 +152,8 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 app.post('/api/membership/redeem', requireAuth, (req, res, next) => {
+  return fail(res, 403, '会员支付功能尚未开放', 'PAYMENT_DISABLED');
+  // eslint-disable-next-line no-unreachable
   try {
     const code = String((req.body || {}).code || '').trim();
     const result = redeemMembership(req.user.id, code);
