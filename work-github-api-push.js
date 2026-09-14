@@ -38,27 +38,40 @@ async function createBlob(filePath) {
   return blob.sha;
 }
 
-async function buildTree(dir, base = dir) {
-  const tree = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === '.git') continue;
-    const abs = path.join(dir, entry.name);
-    const rel = path.relative(base, abs).split(path.sep).join('/');
-    if (entry.isDirectory()) {
-      const subtree = await buildTree(abs, base);
-      const created = await gh(`${API}/repos/${OWNER}/${REPO}/git/trees`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tree: subtree })
-      });
-      tree.push({ path: rel, mode: '040000', type: 'tree', sha: created.sha });
-    } else if (entry.isFile()) {
-      const sha = await createBlob(abs);
-      tree.push({ path: rel, mode: '100644', type: 'blob', sha });
-      console.log(`blob ${rel}`);
-    }
+async function buildTree() {
+  const files = git(['ls-files']).split(/\r?\n/).filter(Boolean);
+  const blobs = new Map();
+  for (const rel of files) {
+    const abs = path.join(process.cwd(), rel);
+    if (!fs.existsSync(abs)) throw new Error('tracked file missing: ' + rel);
+    const sha = await createBlob(abs);
+    blobs.set(rel, sha);
   }
-  return tree;
+  const root = new Map();
+  const ensureDir = (parent, name) => {
+    if (!parent.has(name)) parent.set(name, { dirs: new Map(), files: new Map() });
+    return parent.get(name);
+  };
+  for (const [rel, sha] of blobs) {
+    const parts = rel.split('/');
+    let node = { dirs: root, files: new Map() };
+    for (let i = 0; i < parts.length - 1; i++) node = ensureDir(node.dirs, parts[i]);
+    node.files.set(parts[parts.length - 1], sha);
+  }
+  const makeTree = async (node) => {
+    const items = [];
+    for (const [name, child] of node.dirs) {
+      const childSha = await makeTree(child);
+      items.push({ path: name, mode: '040000', type: 'tree', sha: childSha });
+    }
+    for (const [name, sha] of node.files) items.push({ path: name, mode: '100644', type: 'blob', sha });
+    const created = await gh(`${API}/repos/${OWNER}/${REPO}/git/trees`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tree: items })
+    });
+    return created.sha;
+  };
+  return makeTree({ dirs: root, files: new Map() });
 }
-
 async function main() {
   if (!TOKEN) throw new Error('缺少 GITHUB_TOKEN');
   const status = git(['status', '--porcelain']);
@@ -74,12 +87,8 @@ async function main() {
   console.log(`local_head=${head}`);
   const remoteRef = await gh(`${API}/repos/${OWNER}/${REPO}/git/ref/heads/${BRANCH}`).catch((error) => (error.status === 404 || error.status === 409) ? null : Promise.reject(error));
   const parentShas = remoteRef ? [remoteRef.object.sha] : [];
-  const treeItems = await buildTree(process.cwd());
-  const tree = await gh(`${API}/repos/${OWNER}/${REPO}/git/trees`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tree: treeItems })
-  });
+  const treeSha = await buildTree();
+  const tree = { sha: treeSha };
   const commit = await gh(`${API}/repos/${OWNER}/${REPO}/git/commits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
