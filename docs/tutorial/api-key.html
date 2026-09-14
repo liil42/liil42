@@ -1,0 +1,49 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>获取 API Key 教程</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07111f; --surface:#0d1b2e; --border:#20344d; --text:#e5f1ff; --muted:#8da4bd; --primary:#38bdf8; }
+    * { box-sizing: border-box; }
+    body { margin:0; color:var(--text); background:linear-gradient(rgba(56,189,248,.035) 1px, transparent 1px),linear-gradient(90deg, rgba(56,189,248,.035) 1px, transparent 1px),var(--bg); background-size:28px 28px; font-family:"Microsoft YaHei",system-ui,sans-serif; line-height:1.7; }
+    .shell { width:min(980px,calc(100% - 32px)); margin:0 auto; padding:28px 0 56px; }
+    .header { display:flex; gap:14px; align-items:center; margin-bottom:18px; }
+    .back { color:var(--primary); text-decoration:none; border:1px solid var(--border); border-radius:6px; padding:8px 12px; background:var(--surface); white-space:nowrap; }
+    h1 { margin:0; font-size:clamp(24px,3vw,34px); }
+    .tag { display:inline-block; color:var(--primary); font-size:12px; border:1px solid var(--primary); border-radius:999px; padding:2px 9px; margin-bottom:6px; }
+    .hero,.step { background:rgba(13,27,46,.88); border:1px solid var(--border); border-radius:8px; box-shadow:0 0 0 1px rgba(56,189,248,.04), 0 12px 36px rgba(0,0,0,.18); }
+    .hero { padding:18px; margin-bottom:18px; }
+    .hero p,.step p { margin:6px 0 0; color:var(--muted); }
+    .steps { display:grid; gap:16px; }
+    .step { padding:18px; }
+    .head { display:flex; gap:12px; margin-bottom:14px; }
+    .num { width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; border-radius:6px; background:var(--primary); color:#06101f; font-weight:700; }
+    h2 { margin:0; font-size:18px; }
+    img { display:block; width:100%; max-height:620px; object-fit:contain; object-position:left top; background:#08101d; border:1px solid var(--border); border-radius:6px; }
+    .footer { display:flex; justify-content:center; margin-top:24px; }
+    .btn { display:inline-block; color:#06101f; background:var(--primary); border-radius:6px; padding:10px 18px; text-decoration:none; font-weight:700; }
+    @media (max-width:720px) { .shell{width:min(100% - 20px,980px);padding-top:16px}.header{flex-wrap:wrap}.header h1{font-size:24px} }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <a class="back" href="../">返回设置</a>
+      <div><span class="tag">API Key</span><h1>怎么获取 API Key</h1></div>
+    </header>
+    <section class="hero">
+      <strong>跟着下面 4 步做即可</strong>
+      <p>API Key 相当于你的钥匙。复制后只粘贴到设置页保存，不要把它发给别人。新手可以先充值 3 元体验。</p>
+    </section>
+    <div class="steps">
+      <article class="step"><div class="head"><span class="num">1</span><div><h2>打开 DeepSeek 官网</h2><p>在浏览器搜索 deepseek.com，进入官网。</p></div></div><img src="./step-1.png" alt="打开 DeepSeek 官网" loading="lazy" /></article>
+      <article class="step"><div class="head"><span class="num">2</span><div><h2>进入 API 开放平台</h2><p>在主页找到“使用 API 开放平台”，点击进入。</p></div></div><img src="./step-2.png" alt="进入 API 开放平台" loading="lazy" /></article>
+      <article class="step"><div class="head"><span class="num">3</span><div><h2>打开 API keys</h2><p>在页面最左侧点击 API keys。</p></div></div><img src="./step-3.png" alt="打开 API keys" loading="lazy" /></article>
+      <article class="step"><div class="head"><span class="num">4</span><div><h2>创建并复制 API Key</h2><p>点击创建 API Key，输入名称后复制生成的 Key，回到设置页粘贴保存。</p></div></div><img src="./step-4.png" alt="创建并复制 API Key" loading="lazy" /></article>
+    </div>
+    <div class="footer"><a class="btn" href="../">返回设置填写 API Key</a></div>
+  </main>
+</body>
+</html>
