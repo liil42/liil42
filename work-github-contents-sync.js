@@ -1,0 +1,9 @@
+const fs=require('fs'), path=require('path'), {execFileSync}=require('child_process');
+const TOKEN=process.env.GITHUB_TOKEN||'', OWNER='liil42', REPO='liil42', API='https://api.github.com';
+const headers={Authorization:`Bearer ${TOKEN}`,Accept:'application/vnd.github+json','User-Agent':'Codex-Deploy'};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function gh(url,opt={},attempts=5){let last;for(let i=1;i<=attempts;i++){try{const r=await fetch(url,{...opt,headers:{...headers,...(opt.headers||{})}});const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={raw:text}}if(!r.ok){const e=Object.assign(new Error(`${r.status} ${data.message||r.statusText}`),{status:r.status,data,noRetry:r.status<500&&r.status!==429});throw e}return data}catch(e){last=e;if(e.noRetry||i===attempts)throw e;console.log('retry',i,e.message);await sleep(i*1200)}}throw last}
+function git(a){return execFileSync('git',a,{cwd:process.cwd(),encoding:'utf8'})}
+async function putFile(rel,sha){const existing=await gh(`${API}/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(rel).replace(/%2F/g,'/')}`,{},2).catch(e=>e.status===404?null:Promise.reject(e));const body={message:`deploy: sync ${rel}`,content:fs.readFileSync(path.join(process.cwd(),rel)).toString('base64'),branch:'main'};if(existing&&existing.sha)body.sha=existing.sha;await gh(`${API}/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(rel).replace(/%2F/g,'/')}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
+async function main(){if(!TOKEN)throw new Error('?? GITHUB_TOKEN');const files=git(['ls-files']).split(/\r?\n/).filter(Boolean);console.log('files='+files.length);let n=0;for(const rel of files){await putFile(rel);n++;if(n%20===0||n===files.length)console.log(`contents ${n}/${files.length}`)}}
+main().catch(e=>{console.error(e.stack||e);process.exit(1)});
