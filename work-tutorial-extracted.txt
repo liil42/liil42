@@ -1,0 +1,2 @@
+﻿
+`n`nDeepseek Api教程：`n`n1搜索deepseek.com`n`n`n2进入主页点击使用Api开放平台：`n`n`n3界面最左侧点击API keys：`n`n`n4点击创建Api key:`n`n`n5输入名称后跳出Api key,复制到框里，新手建议先充值3元体验`n`n
