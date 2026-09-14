@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { BookOpenText, ExternalLink, Gift, KeyRound, Loader2, Rocket, Trash2 } from 'lucide-react';
+import { BookOpenText, ExternalLink, KeyRound, Loader2, Rocket, Trash2 } from 'lucide-react';
 import { api, clearToken } from '../api';
 
 const LEARNING_MODE_KEY = 'daimaxuexi_learning_mode';
@@ -9,7 +9,6 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [model, setModel] = useState(user.model || '');
-  const [code, setCode] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,24 +43,6 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
     setMessage(nextMode === 'novice' ? '已切换到新手模式' : '已切换到进阶模式');
   }
 
-  async function redeem() {
-    setError('');
-    setMessage('');
-    setLoading(true);
-    try {
-      const data = await api('/api/membership/redeem', {
-        method: 'POST',
-        body: JSON.stringify({ code })
-      });
-      setUser(data.user);
-      setCode('');
-      setMessage('会员已激活');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function deleteAll() {
     if (!window.confirm('确定删除全部账号数据和记录吗？此操作不能撤销。')) return;
@@ -172,16 +153,6 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
         </div>
       </section>
 
-      <section className="panel">
-        <div className="section-title"><Gift size={16} />会员激活</div>
-        <p className="muted">输入会员码即可激活会员权限。</p>
-        <div className="action-row">
-          <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="会员码" />
-          <button className="btn" onClick={redeem} disabled={loading}>
-            激活
-          </button>
-        </div>
-      </section>
 
       <section className="panel danger-panel">
         <div className="section-title"><Trash2 size={16} />数据管理</div>
