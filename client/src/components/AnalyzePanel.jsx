@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import JSZip from 'jszip';
 import {
   Archive,
+  BookOpenCheck,
   Bug,
   Check,
   ClipboardPaste,
@@ -12,7 +13,9 @@ import {
   FolderOpen,
   Github,
   Globe,
+  KeyRound,
   Loader2,
+  Plus,
   RefreshCw
 } from 'lucide-react';
 import { api } from '../api';
@@ -20,20 +23,14 @@ import MarkdownView from './MarkdownView';
 import SnippetResult from './SnippetResult';
 import LoadingView from './LoadingView';
 
-const PRIMARY_MODES = [
-  { id: 'paste', label: '粘贴代码', icon: ClipboardPaste },
-  { id: 'file', label: '上传文件', icon: FileCode2 }
-];
-
 const MORE_MODES = [
+  { id: 'file', label: '上传文件', icon: FileCode2 },
   { id: 'zip', label: '项目压缩包', icon: Archive },
   { id: 'folder', label: '本地文件夹', icon: FolderOpen },
   { id: 'github', label: 'GitHub', icon: Github },
-  { id: 'url', label: '网页', icon: Globe },
+  { id: 'url', label: '网页地址', icon: Globe },
   { id: 'error', label: '报错日志', icon: Bug }
 ];
-
-const MODES = [...PRIMARY_MODES, ...MORE_MODES];
 
 const EXAMPLE_CODE = 'const total = price * count;';
 
@@ -53,7 +50,7 @@ function downloadText(filename, text) {
   URL.revokeObjectURL(url);
 }
 
-export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialSessionId = null }) {
+export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialSessionId = null, onOpenMistakes, onOpenTutorial }) {
   const [mode, setMode] = useState('paste');
   const [showMoreModes, setShowMoreModes] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -83,7 +80,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
   async function runSnippet(code, filename, language) {
     if (!code.trim()) {
-      setError('粘贴或上传代码后再开始讲解');
+      setError('先粘贴或上传代码，再让我讲');
       return;
     }
     setError('');
@@ -107,7 +104,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
   async function runProject(files, title) {
     if (!files.length) {
-      setError('没有可分析的文本文件');
+      setError('没有可以分析的文字文件');
       return;
     }
     setError('');
@@ -163,7 +160,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       zip.forEach((relativePath, entry) => {
         if (!entry.dir && isTextFile(relativePath)) entries.push({ path: relativePath, entry });
       });
-      if (entries.length === 0) throw new Error('压缩包中没有文本文件');
+      if (entries.length === 0) throw new Error('压缩包里没有文字文件');
       const files = [];
       let totalChars = 0;
       for (const item of entries.slice(0, 200)) {
@@ -205,8 +202,8 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       }
 
       await walk(directory, '');
-      if (handles.length === 0) throw new Error('没有找到可分析的文本文件');
-      if (handles.length > 200) throw new Error('项目文件超过 200 个，请选择更小的模块');
+      if (handles.length === 0) throw new Error('没有找到可以分析的文字文件');
+      if (handles.length > 200) throw new Error('项目文件超过 200 个，请选择更小的文件夹');
 
       const files = [];
       let totalChars = 0;
@@ -323,7 +320,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
   async function handleErrorAnalysis() {
     if (!errorCode.trim() || !errorLog.trim()) {
-      setError('代码和报错日志都不能为空');
+      setError('代码和报错日志不能为空');
       return;
     }
     setError('');
@@ -351,33 +348,30 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         <p>我会用小白能懂的方式，一行一行讲给你听。</p>
       </div>
 
-      <nav className="mode-bar primary">
-        {PRIMARY_MODES.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`mode-item ${mode === item.id ? 'active' : ''}`}
-              onClick={() => {
-                setMode(item.id);
-                setError('');
-                setSnippet(null);
-                setResult(null);
-              }}
-            >
-              <Icon size={16} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <div className="primary-actions">
+        <button
+          type="button"
+          className={`primary-action ${mode === 'paste' ? 'active' : ''}`}
+          onClick={() => { setMode('paste'); setError(''); setSnippet(null); setResult(null); }}
+        >
+          <ClipboardPaste size={22} />
+          <strong>帮我讲懂这段代码</strong>
+          <span>粘贴代码，先看整体，再逐行问明白</span>
+        </button>
+        <button type="button" className="primary-action" onClick={onOpenMistakes}>
+          <BookOpenCheck size={22} />
+          <strong>我哪里没学会</strong>
+          <span>查看错题，复习还没掌握的知识</span>
+        </button>
+      </div>
 
       <button
         type="button"
         className="more-modes-toggle"
         onClick={() => setShowMoreModes((current) => !current)}
       >
-        {showMoreModes ? '收起更多分析方式' : '更多分析方式'}
+        <Plus size={15} />
+        {showMoreModes ? '收起更多分析方式' : '更多分析方式：文件、项目、GitHub、报错日志'}
       </button>
 
       {showMoreModes && (
@@ -437,7 +431,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
               rows={14}
               value={pasteCode}
               onChange={(event) => setPasteCode(event.target.value)}
-              placeholder={`粘贴你看不懂的代码，例如：${EXAMPLE_CODE}`}
+              placeholder={`粘贴你看不懂的代码，例如：\n${EXAMPLE_CODE}`}
             />
             <div className="example-row">
               <span>示例</span>
@@ -451,7 +445,11 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
               onClick={() => runSnippet(pasteCode, '粘贴代码', pasteLanguage)}
             >
               {loading ? <Loader2 size={16} className="spin" /> : <Code2 size={16} />}
-              开始讲解
+              开始讲给我听
+            </button>
+            <button type="button" className="tutorial-link inline" onClick={onOpenTutorial}>
+              <KeyRound size={14} />
+              还没有 API Key？查看获取教程
             </button>
           </div>
         )}

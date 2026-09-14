@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { BookOpenText, Gift, KeyRound, Loader2, Rocket, Trash2 } from 'lucide-react';
+﻿import { useState } from 'react';
+import { BookOpenText, ExternalLink, Gift, KeyRound, Loader2, Rocket, Trash2 } from 'lucide-react';
 import { api, clearToken } from '../api';
 
 const LEARNING_MODE_KEY = 'daimaxuexi_learning_mode';
 
-export default function SettingsPanel({ user, setUser, onLogout }) {
+export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial }) {
   const [provider, setProvider] = useState(user.provider || 'deepseek');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
@@ -120,6 +120,10 @@ export default function SettingsPanel({ user, setUser, onLogout }) {
               onChange={(event) => setApiKey(event.target.value)}
               placeholder={user.apiKey ? `已保存 ${user.apiKey}` : '填写 API Key'}
             />
+            <button type="button" className="tutorial-link inline" onClick={onOpenTutorial}>
+              <ExternalLink size={14} />
+              还不清楚怎么获取？查看 API Key 获取教程
+            </button>
           </label>
           {provider === 'custom' && (
             <label className="field">
@@ -138,11 +142,14 @@ export default function SettingsPanel({ user, setUser, onLogout }) {
             保存
           </button>
         </div>
+        <p className="muted deploy-note">
+          当前在线页面为前端演示版。登录、保存和历史需要使用 3002 后端服务；如果部署到 GitHub Pages，请另外部署后端并配置 VITE_API_BASE_URL。
+        </p>
       </section>
 
       <section className="panel">
         <div className="section-title"><BookOpenText size={16} />讲解模式</div>
-        <p className="muted">新手模式会多用比喻、逐个解释变量；进阶模式更强调结构和边界情况。</p>
+        <p className="muted">新手模式会多用比喻、逐个解释变量；进阶模式更强调结构、性能和边界情况。</p>
         <div className="mode-choice">
           <button
             type="button"
@@ -178,14 +185,14 @@ export default function SettingsPanel({ user, setUser, onLogout }) {
 
       <section className="panel danger-panel">
         <div className="section-title"><Trash2 size={16} />数据管理</div>
-        <p className="muted">当前账号的分析记录会一直保存，直到你主动删除。</p>
+        <p className="muted">当前账号的分析记录会一直保留，直到你主动删除。</p>
         <button className="btn btn-danger" onClick={deleteAll} disabled={loading}>
           <Trash2 size={16} />
           删除全部数据
         </button>
         <div className="account-delete">
           <strong>注销账号</strong>
-          <p>永久删除账号、API Key、学习历史和错题库。注销后用户名可以重新注册。</p>
+          <p>永久删除账号、API Key、学习历史和错题库，注销后用户名可以重新注册。</p>
           {!showDeleteAccount && (
             <button className="btn btn-danger" onClick={() => setShowDeleteAccount(true)} disabled={loading}>
               注销账号

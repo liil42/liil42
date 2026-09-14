@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { api, getToken, setToken, clearToken } from './api';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -30,6 +30,11 @@ export default function App() {
     loadUser();
   }, []);
 
+  function openTutorial() {
+    const base = import.meta.env.BASE_URL || '/';
+    window.location.href = `${base}tutorial/api-key.html`;
+  }
+
   function handleLogin(data) {
     setToken(data.token);
     setUser(data.user);
@@ -46,8 +51,8 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onLogin={handleLogin} backendDown={backendDown} />;
+    return <LoginPage onLogin={handleLogin} backendDown={backendDown} onOpenTutorial={openTutorial} />;
   }
 
-  return <Dashboard user={user} setUser={setUser} onLogout={handleLogout} />;
+  return <Dashboard user={user} setUser={setUser} onLogout={handleLogout} onOpenTutorial={openTutorial} />;
 }

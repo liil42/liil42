@@ -37,7 +37,7 @@ with sync_playwright() as p:
     page.reload(wait_until='networkidle')
     page.wait_for_timeout(1000)
 
-    page.locator('nav.tabs button', has_text='历史').click()
+    page.locator('nav.tabs button', has_text='继续上次学习').click()
     page.wait_for_timeout(1000)
     record('历史列表出现学习记录', page.locator('.history-item').count() >= 1, 'items=' + str(page.locator('.history-item').count()))
     if page.locator('.history-item').count() >= 1:

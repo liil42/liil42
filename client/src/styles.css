@@ -1719,3 +1719,185 @@ html[data-theme="light"] body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* 首屏双入口：降低第一次使用的选择成本 */
+.primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 10px;
+}
+
+.primary-action {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+
+.primary-action:hover,
+.primary-action.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.primary-action strong {
+  font-size: 17px;
+}
+
+.primary-action span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.tutorial-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 0;
+  color: var(--primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tutorial-link:hover {
+  text-decoration: underline;
+}
+
+.tutorial-link.inline {
+  margin-top: 8px;
+}
+
+.deploy-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  line-height: 1.7;
+}
+
+.tutorial-shell {
+  width: min(980px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 56px;
+}
+
+.tutorial-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.tutorial-header > div {
+  flex: 1;
+}
+
+.tutorial-header h1 {
+  margin: 6px 0 0;
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.tutorial-hero {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px;
+  margin-bottom: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tutorial-hero p,
+.tutorial-step p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.tutorial-steps {
+  display: grid;
+  gap: 16px;
+}
+
+.tutorial-step {
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tutorial-step-head {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.tutorial-step-head > span {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  color: #06101f;
+  font-weight: 700;
+  background: var(--primary);
+  border-radius: 6px;
+}
+
+.tutorial-step h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tutorial-step img {
+  display: block;
+  width: 100%;
+  max-height: 620px;
+  object-fit: contain;
+  object-position: left top;
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.tutorial-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+@media (max-width: 720px) {
+  .primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorial-header {
+    flex-wrap: wrap;
+  }
+
+  .tutorial-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tutorial-shell {
+    width: min(100% - 20px, 980px);
+    padding-top: 16px;
+  }
+}

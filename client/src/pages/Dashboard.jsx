@@ -1,20 +1,20 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+﻿import { Suspense, lazy, useEffect, useState } from 'react';
 import { BookOpenText, History, LogOut, Moon, RotateCcw, Settings, Sun, Wrench } from 'lucide-react';
 import AnalyzePanel from '../components/AnalyzePanel';
+import { api } from '../api';
 
 const HistoryPanel = lazy(() => import('../components/HistoryPanel'));
 const MistakePanel = lazy(() => import('../components/MistakePanel'));
 const SettingsPanel = lazy(() => import('../components/SettingsPanel'));
-import { api } from '../api';
 
 const TABS = [
-  { id: 'analyze', label: '分析', icon: BookOpenText },
-  { id: 'history', label: '历史', icon: History },
-  { id: 'mistakes', label: '错题库', icon: Wrench },
+  { id: 'analyze', label: '帮我讲懂代码', icon: BookOpenText },
+  { id: 'history', label: '继续上次学习', icon: History },
+  { id: 'mistakes', label: '我哪里没学会', icon: Wrench },
   { id: 'settings', label: '设置', icon: Settings }
 ];
 
-export default function Dashboard({ user, setUser, onLogout }) {
+export default function Dashboard({ user, setUser, onLogout, onOpenTutorial }) {
   const [tab, setTab] = useState('analyze');
   const [dataVersion, setDataVersion] = useState(0);
   const [dueCount, setDueCount] = useState(0);
@@ -126,11 +126,13 @@ export default function Dashboard({ user, setUser, onLogout }) {
               setUser={setUser}
               onHistoryChanged={markDataChanged}
               initialSessionId={continueSessionId}
+              onOpenMistakes={() => setTab('mistakes')}
+              onOpenTutorial={onOpenTutorial}
             />
           )}
           {tab === 'history' && <HistoryPanel refreshKey={dataVersion} />}
           {tab === 'mistakes' && <MistakePanel refreshKey={dataVersion} />}
-          {tab === 'settings' && <SettingsPanel user={user} setUser={setUser} onLogout={onLogout} />}
+          {tab === 'settings' && <SettingsPanel user={user} setUser={setUser} onLogout={onLogout} onOpenTutorial={onOpenTutorial} />}
           </Suspense>
         </section>
       </main>
