@@ -72,7 +72,7 @@ async function main() {
   const authorName = git(['log', '-1', '--pretty=%an']).trim();
   const authorEmail = git(['log', '-1', '--pretty=%ae']).trim();
   console.log(`local_head=${head}`);
-  const remoteRef = await gh(`${API}/repos/${OWNER}/${REPO}/git/ref/heads/${BRANCH}`).catch((error) => error.status === 404 ? null : Promise.reject(error));
+  const remoteRef = await gh(`${API}/repos/${OWNER}/${REPO}/git/ref/heads/${BRANCH}`).catch((error) => (error.status === 404 || error.status === 409) ? null : Promise.reject(error));
   const parentShas = remoteRef ? [remoteRef.object.sha] : [];
   const treeItems = await buildTree(process.cwd());
   const tree = await gh(`${API}/repos/${OWNER}/${REPO}/git/trees`, {
