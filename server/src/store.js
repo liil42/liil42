@@ -3,8 +3,21 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { decrypt } = require('./crypto');
 
+const sqlite = db.sqlite;
+
 function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function mapUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    password_hash: row.password_hash,
+    is_member: row.is_member,
+    created_at: row.created_at
+  };
 }
 
 function createUser(username, password) {
@@ -15,17 +28,18 @@ function createUser(username, password) {
     is_member: 0,
     created_at: new Date().toISOString()
   };
-  db.data.users.push(user);
-  db.save();
+  sqlite.prepare('INSERT INTO users (id, username, password_hash, is_member, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    user.id, user.username, user.password_hash, user.is_member, user.created_at
+  );
   return getUserById(user.id);
 }
 
 function findUserByUsername(username) {
-  return db.data.users.find((user) => user.username === username) || null;
+  return mapUser(sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username));
 }
 
 function getUserById(id) {
-  return db.data.users.find((user) => user.id === id) || null;
+  return mapUser(sqlite.prepare('SELECT * FROM users WHERE id = ?').get(id));
 }
 
 function isUserMember(userId) {
@@ -34,11 +48,8 @@ function isUserMember(userId) {
 }
 
 function activateMembership(userId) {
-  const user = getUserById(userId);
-  if (!user) return null;
-  user.is_member = 1;
-  db.save();
-  return user;
+  sqlite.prepare('UPDATE users SET is_member = 1 WHERE id = ?').run(userId);
+  return getUserById(userId);
 }
 
 function verifyPassword(user, password) {
@@ -46,25 +57,20 @@ function verifyPassword(user, password) {
 }
 
 function saveApiKey(userId, provider, encryptedKey, baseUrl, model) {
-  const index = db.data.apiKeys.findIndex((item) => item.user_id === userId);
-  const record = {
-    user_id: userId,
-    provider,
-    key_encrypted: encryptedKey,
-    base_url: baseUrl || null,
-    model: model || null,
-    updated_at: new Date().toISOString()
-  };
-  if (index >= 0) {
-    db.data.apiKeys[index] = record;
-  } else {
-    db.data.apiKeys.push(record);
-  }
-  db.save();
+  sqlite.prepare(`
+    INSERT INTO api_keys (user_id, provider, key_encrypted, base_url, model, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      provider = excluded.provider,
+      key_encrypted = excluded.key_encrypted,
+      base_url = excluded.base_url,
+      model = excluded.model,
+      updated_at = excluded.updated_at
+  `).run(userId, provider, encryptedKey, baseUrl || null, model || null, new Date().toISOString());
 }
 
 function getApiKeyRecord(userId) {
-  const row = db.data.apiKeys.find((item) => item.user_id === userId);
+  const row = sqlite.prepare('SELECT * FROM api_keys WHERE user_id = ?').get(userId);
   if (!row) return null;
   return {
     provider: row.provider,
@@ -77,85 +83,83 @@ function getApiKeyRecord(userId) {
 function createMembershipCodes(count = 1) {
   const createdAt = new Date().toISOString();
   const codes = [];
+  const insert = sqlite.prepare('INSERT INTO membership_codes (id, code, used_by, used_at, created_at) VALUES (?, ?, NULL, NULL, ?)');
   for (let i = 0; i < count; i += 1) {
     const part = () => crypto.randomBytes(3).toString('hex').toUpperCase();
     const code = `CM-${part()}-${part()}`;
-    db.data.membershipCodes.push({ code, used_by: null, created_at: createdAt, used_at: null });
+    insert.run(crypto.randomUUID(), code, createdAt);
     codes.push(code);
   }
-  db.save();
   return codes;
 }
 
 function redeemMembership(userId, code) {
-  const row = db.data.membershipCodes.find((item) => item.code === code);
-  if (!row) return { ok: false, message: '会员码不存在' };
-  if (row.used_by) return { ok: false, message: '会员码已被使用' };
-  const user = getUserById(userId);
-  row.used_by = userId;
-  row.used_at = new Date().toISOString();
-  user.is_member = 1;
-  db.save();
-  return { ok: true, user };
+  const row = sqlite.prepare('SELECT * FROM membership_codes WHERE code = ?').get(code);
+  if (!row) return { ok: false, message: '??????' };
+  if (row.used_by) return { ok: false, message: '???????' };
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE membership_codes SET used_by = ?, used_at = ? WHERE code = ?').run(userId, now, code);
+  sqlite.prepare('UPDATE users SET is_member = 1 WHERE id = ?').run(userId);
+  return { ok: true, user: getUserById(userId) };
 }
 
 function todayRunCount(userId) {
-  return db.data.analysisRuns.filter((item) => item.user_id === userId && item.day_key === localDateKey()).length;
+  const row = sqlite.prepare(`SELECT COUNT(*) AS total FROM analysis_runs WHERE user_id = ? AND substr(created_at, 1, 10) = ?`).get(userId, localDateKey());
+  return row ? row.total : 0;
 }
 
 function recordRun(userId, runType, title, result) {
   const now = new Date();
   const id = crypto.randomUUID();
-  db.data.analysisRuns.push({
-    id,
-    user_id: userId,
-    run_type: runType,
-    title,
-    result,
-    day_key: localDateKey(now),
-    created_at: now.toISOString()
-  });
-  db.save();
+  sqlite.prepare(`
+    INSERT INTO analysis_runs (id, user_id, source_type, file_name, result_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, userId, runType, title, JSON.stringify(result || {}), now.toISOString());
   return id;
 }
 
 function listHistory(userId) {
-  return db.data.analysisRuns
-    .filter((item) => item.user_id === userId)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-    .slice(0, 30)
-    .map((item) => ({
-      id: item.id,
-      run_type: item.run_type,
-      title: item.title,
-      created_at: item.created_at,
-      summary: item.result.slice(0, 120)
-    }));
+  return sqlite.prepare(`
+    SELECT id, source_type AS run_type, file_name AS title, result_json, created_at
+    FROM analysis_runs WHERE user_id = ?
+    ORDER BY created_at DESC LIMIT 30
+  `).all(userId).map((row) => ({
+    id: row.id,
+    run_type: row.run_type,
+    title: row.title,
+    created_at: row.created_at,
+    summary: String(row.result_json || '').slice(0, 120)
+  }));
 }
 
 function getHistoryItem(userId, id) {
-  return db.data.analysisRuns.find((item) => item.id === id && item.user_id === userId) || null;
+  const row = sqlite.prepare('SELECT * FROM analysis_runs WHERE id = ? AND user_id = ?').get(id, userId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    run_type: row.source_type,
+    title: row.file_name,
+    result: row.result_json,
+    created_at: row.created_at
+  };
 }
 
 function deleteHistoryItem(userId, id) {
-  const index = db.data.analysisRuns.findIndex((item) => item.id === id && item.user_id === userId);
-  if (index < 0) return false;
-  db.data.analysisRuns.splice(index, 1);
-  db.save();
-  return true;
+  return sqlite.prepare('DELETE FROM analysis_runs WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
 }
 
 function deleteUserData(userId) {
-  db.data.apiKeys = db.data.apiKeys.filter((item) => item.user_id !== userId);
-  db.data.analysisRuns = db.data.analysisRuns.filter((item) => item.user_id !== userId);
-  db.data.membershipCodes.forEach((item) => {
-    if (item.used_by === userId) {
-      item.used_by = null;
-      item.used_at = null;
-    }
-  });
-  db.data.users = db.data.users.filter((item) => item.id !== userId);
-  db.save();
+  sqlite.exec('BEGIN IMMEDIATE');
+  try {
+    sqlite.prepare('DELETE FROM analysis_runs WHERE user_id = ?').run(userId);
+    sqlite.prepare('DELETE FROM api_keys WHERE user_id = ?').run(userId);
+    sqlite.prepare('UPDATE membership_codes SET used_by = NULL, used_at = NULL WHERE used_by = ?').run(userId);
+    sqlite.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    sqlite.exec('COMMIT');
+  } catch (error) {
+    sqlite.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 module.exports = {
