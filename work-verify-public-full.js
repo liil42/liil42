@@ -1,4 +1,4 @@
-﻿const BASE = process.env.PUBLIC_API_BASE || 'https://daimaxuexi-production.up.railway.app';
+const BASE = process.env.PUBLIC_API_BASE || 'https://daimaxuexi-production.up.railway.app';
 const API_KEY = String(process.env.DEEPSEEK_API_KEY || '').trim();
 const results = [];
 
@@ -41,7 +41,7 @@ async function main() {
     process.exit(2);
   }
 
-  const username = 'full' + Date.now().toString().slice(-10);
+  const username = 'full' + Math.random().toString(16).slice(2, 10);
   const password = 'Test123456!';
   let token = '';
   let sessionId = '';
@@ -56,7 +56,7 @@ async function main() {
     token = r.body?.token || '';
     record('注册临时账号', r.status === 200 && !!token, `${r.status} ${username}`);
 
-    if (!token) throw new Error('注册失败，无法继续');
+    if (!token) throw new Error('注册失败，无法继续：' + (r.body?.error?.message || r.body?.message || JSON.stringify(r.body).slice(0, 200)));
 
     r = await call('/api/settings/apikey', {
       method: 'POST',
