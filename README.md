@@ -45,60 +45,70 @@ ADMIN_TOKEN=请替换成随机字符串
 
 ## 数据库
 
-- `server/data/app.json`：账号、API Key、历史、会员码
-- `server/data/learning.db`：学习会话、逐行讲解、提问、用户理解、错题、分类、练习记录
+- `server/data/learning.db`：当前主数据库，保存账号、加密后的 API Key、分析记录、学习会话、逐行讲解、提问、用户理解、错题、分类和练习记录
+- `server/data/app.json`：旧版数据文件，仅在数据库为空时用于一次性导入账号、API Key 和分析记录
 - 预留 `plans` / `orders` / `memberships` 表，仅建表，不接支付流程
-
-## 会员码
-
-```bash
-npm run make-code -- 3
-```
-
-生成 3 个会员码，用于在应用内激活会员。
 
 ## 支付说明
 
-当前版本不接微信支付、支付宝支付、商户号、收款码或回调，前端不展示支付入口。数据库仅保留未来接入所需的表结构。
+当前版本不接微信支付、支付宝支付、商户号、收款码或回调，前端不展示支付入口，也不启用会员激活流程。数据库仅保留未来接入所需的表结构。
 
+## 公网部署
 
-## ?????Render + GitHub Pages?
+当前正式环境：
 
-???????? GitHub Pages?????? Render?GitHub Pages ????????????? Express?SQLite???????? AI API Key?
+- 前端：https://liil42.github.io/liil42/
+- 后端：https://daimaxuexi-production.up.railway.app
+- 后端健康检查：https://daimaxuexi-production.up.railway.app/api/health
+- 后端平台：Railway
+- 持久卷挂载路径：`/data`
+- 学习数据库：`/data/learning.db`
 
-### Render ??
+### Railway 后端
 
-1. ?? Render?
-2. ?? Blueprint?
-3. ???? liil42/liil42?
-4. ???????? render.yaml ?????
-5. Render ????? Node 22????? /api/health????? /data?
-6. ?????????????? https://daimaxuexi-backend.onrender.com?
+Railway 使用仓库根目录的 `Dockerfile` 构建和启动：
 
-????????
+```text
+PORT=自动注入
+NODE_ENV=production
+APP_DATA_FILE=/data/app.json
+LEARNING_DB_PATH=/data/learning.db
+CORS_ORIGINS=https://liil42.github.io,http://localhost:5173,http://127.0.0.1:5173
+JWT_SECRET=生产环境随机长字符串
+ENCRYPTION_KEY=生产环境随机长字符串
+```
 
-- APP_DATA_FILE=/data/app.json
-- LEARNING_DB_PATH=/data/learning.db
+`/data` 必须挂载持久卷，否则容器重启后 SQLite 数据会丢失。
 
-???Render ??????????????????????????????????????
+### GitHub Pages 前端
 
-### GitHub Pages ??
+前端发布目录是 `docs/`，由 GitHub Pages 的 `main /docs` 提供。生产构建命令：
 
-? GitHub ???????? Actions ???
+```powershell
+$env:VITE_BASE_PATH='/liil42/'
+$env:VITE_API_BASE_URL='https://daimaxuexi-production.up.railway.app'
+npm run build --workspace=client
+```
 
-- VITE_API_BASE_URL=https://??Render????
+构建后把 `client/dist` 同步到 `docs/`，并保留 `docs/404.html` 和 `docs/.nojekyll`。
 
-?????? Deploy GitHub Pages ????
+### 公网验收
 
-### ????
+配置自己的 DeepSeek Key 后，可以运行完整公网学习闭环验证：
 
-- ???https://liil42.github.io/liil42/
-- ???????https://??Render????/api/health
-- ?????????AI ??????????????????
+```powershell
+$env:DEEPSEEK_API_KEY='你的 DeepSeek API Key'
+node work-verify-public-full.js
+```
 
-### ????
+脚本只在内存中读取 Key，不会把 Key 写入仓库；测试完成后会自动清理临时账号和测试数据。
 
-- ???? .env?
-- ??? GitHub Actions ?????? AI API Key?
-- ???????????? JWT_SECRET ? ENCRYPTION_KEY?
-- ????????????????
+### 常见问题
+
+- 登录后请求失败：先访问后端 `/api/health`，确认 Railway 服务可访问。
+- AI 分析失败：确认设置页已经填写有效 DeepSeek Key，并检查余额。
+- Pages 资源 404：确认构建使用了 `VITE_BASE_PATH=/liil42/`。
+- 刷新深层路径 404：当前是单页状态切换，入口从 `https://liil42.github.io/liil42/` 打开。
+- 数据丢失：确认 Railway 持久卷仍挂载在 `/data`，且 `LEARNING_DB_PATH=/data/learning.db`。
+
+不要提交 `.env`、AI API Key、`JWT_SECRET` 或 `ENCRYPTION_KEY` 到仓库。
