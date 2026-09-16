@@ -1,0 +1,1 @@
+﻿const fs=require('fs');const p='server/src/index.js';let lines=fs.readFileSync(p,'utf8').split(/\r?\n/);lines=lines.filter(l=>!l.trim().startsWith('activateMembership,'));fs.writeFileSync(p,lines.join('\n'),'utf8');console.log('import_cleaned');
