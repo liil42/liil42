@@ -19,12 +19,9 @@ const {
   findUserByUsername,
   getUserById,
   isUserMember,
-  activateMembership,
   verifyPassword,
   saveApiKey,
   getApiKeyRecord,
-  createMembershipCodes,
-  redeemMembership,
   todayRunCount,
   recordRun,
   listHistory,
@@ -50,7 +47,27 @@ const { publicErrorMessage } = require('./errors');
 const { learningStore } = require('./learning-store');
 
 const app = express();
-app.use(cors());
+function buildCorsOrigin() {
+  const configured = String(process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const defaults = [
+    'https://liil42.github.io',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+  ];
+  return [...new Set([...defaults, ...configured])];
+}
+
+const allowedOrigins = buildCorsOrigin();
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '30mb' }));
 
 function ok(res, data, status = 200) {
@@ -151,17 +168,6 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user) });
 });
 
-app.post('/api/membership/redeem', requireAuth, (req, res, next) => {
-  try {
-    const code = String((req.body || {}).code || '').trim();
-    const result = redeemMembership(req.user.id, code);
-    if (!result.ok) return fail(res, 400, result.message);
-    return res.json({ user: publicUser(result.user) });
-  } catch (error) {
-    return next(error);
-  }
-});
-
 app.post('/api/settings/apikey', requireAuth, (req, res, next) => {
   try {
     const { provider, apiKey, baseUrl, model } = req.body || {};
@@ -235,19 +241,6 @@ app.get('/api/history/:id', requireAuth, (req, res) => {
 app.delete('/api/history/:id', requireAuth, (req, res) => {
   deleteHistoryItem(req.user.id, req.params.id);
   res.json({ ok: true });
-});
-
-app.post('/api/admin/codes', (req, res, next) => {
-  try {
-    const token = req.headers['x-admin-token'] || '';
-    if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
-      return fail(res, 403, '管理令牌错误');
-    }
-    const count = Math.min(parseInt(req.body?.count || '1', 10) || 1, 100);
-    return res.json({ codes: createMembershipCodes(count) });
-  } catch (error) {
-    return next(error);
-  }
 });
 
 app.post('/api/analyze/snippet', requireAuth, async (req, res, next) => {
@@ -776,6 +769,10 @@ app.post('/api/analyze/annotate', requireAuth, async (req, res, next) => {
 });
 
 // API 未匹配的路由统一返回 404 JSON，避免被前端静态页兜底吞掉
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, status: 'ok', time: new Date().toISOString() });
+});
+
 app.use('/api', (req, res) => {
   res.status(404).json({
     success: false,
