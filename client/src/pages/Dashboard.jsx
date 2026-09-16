@@ -75,7 +75,7 @@ export default function Dashboard({ user, setUser, onLogout, onOpenTutorial }) {
         <div className="topbar-user">
           <span>{user.username}</span>
           <span className={`member-badge ${user.isMember ? 'member' : ''}`}>
-            {user.isMember ? '永久会员' : `今日 ${user.todayUsed}/3`}
+            {`今日 ${user.todayUsed}/3`}
           </span>
           <button
             className="theme-toggle"

@@ -112,7 +112,7 @@ function requireApiKey(req) {
 function assertQuota(req) {
   if (isUserMember(req.user.id)) return;
   if (todayRunCount(req.user.id) >= 3) {
-    const error = new Error('今日非会员次数已用完，请明天再试或激活会员');
+    const error = new Error('今日体验次数已用完，请明天再试');
     error.status = 429;
     error.code = 'QUOTA_EXCEEDED';
     throw error;
