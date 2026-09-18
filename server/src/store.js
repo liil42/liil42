@@ -69,14 +69,30 @@ function saveApiKey(userId, provider, encryptedKey, baseUrl, model) {
   `).run(userId, provider, encryptedKey, baseUrl || null, model || null, new Date().toISOString());
 }
 
-function getApiKeyRecord(userId) {
+function decryptStoredKey(encryptedKey) {
+  try {
+    return { key: decrypt(encryptedKey), invalid: false, error: null };
+  } catch (error) {
+    return { key: '', invalid: true, error };
+  }
+}
+
+function getApiKeyRecord(userId, options = {}) {
   const row = sqlite.prepare('SELECT * FROM api_keys WHERE user_id = ?').get(userId);
   if (!row) return null;
+  const decoded = decryptStoredKey(row.key_encrypted);
+  if (decoded.invalid && !options.allowInvalid) {
+    const error = new Error('已保存的 API Key 无法读取，请在设置中重新填写 API Key');
+    error.status = 400;
+    error.code = 'API_KEY_INVALID';
+    throw error;
+  }
   return {
     provider: row.provider,
-    key: decrypt(row.key_encrypted),
+    key: decoded.key,
     baseUrl: row.base_url,
-    model: row.model
+    model: row.model,
+    invalid: decoded.invalid
   };
 }
 

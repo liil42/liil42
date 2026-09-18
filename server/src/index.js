@@ -30,6 +30,7 @@ const {
   deleteUserData
 } = require('./store');
 const { encrypt, maskKey } = require('./crypto');
+const { callAI, friendlyError } = require('./ai');
 const {
   analyzeSnippet,
   analyzeError,
@@ -120,14 +121,17 @@ function assertQuota(req) {
 }
 
 function publicUser(user) {
-  const keyRecord = getApiKeyRecord(user.id);
+  const keyRecord = getApiKeyRecord(user.id, { allowInvalid: true });
+  const apiKeyInvalid = Boolean(keyRecord && keyRecord.invalid);
   return {
     id: user.id,
     username: user.username,
     isMember: isUserMember(user.id),
-    apiKey: keyRecord ? maskKey(keyRecord.key) : '',
+    apiKey: keyRecord && !apiKeyInvalid ? maskKey(keyRecord.key) : '',
     provider: keyRecord ? keyRecord.provider : '',
     model: keyRecord ? keyRecord.model : '',
+    apiKeyInvalid,
+    apiKeyMessage: apiKeyInvalid ? '之前保存的 API Key 已失效，请在设置中重新填写' : '',
     todayUsed: todayRunCount(user.id)
   };
 }
@@ -187,6 +191,39 @@ app.post('/api/settings/apikey', requireAuth, (req, res, next) => {
   }
 });
 
+app.post('/api/settings/test-connection', requireAuth, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const saved = getApiKeyRecord(req.user.id, { allowInvalid: true });
+    const provider = String(payload.provider || (saved && saved.provider) || 'deepseek');
+    const apiKey = String(payload.apiKey || (saved && saved.key) || '').trim();
+    const baseUrl = String(payload.baseUrl || (saved && saved.baseUrl) || '');
+    const model = String(payload.model || (saved && saved.model) || '');
+    if (!apiKey) {
+      return fail(res, 400, '请先填写 API Key，再测试连接', 'API_KEY_REQUIRED');
+    }
+    if (!['deepseek', 'openai', 'custom'].includes(provider)) {
+      return fail(res, 400, '请先选择模型服务商', 'INVALID_PROVIDER');
+    }
+    const content = await callAI(
+      apiKey,
+      provider,
+      baseUrl,
+      model,
+      [
+        { role: 'system', content: '你只需要回复：连接成功。' },
+        { role: 'user', content: '请测试当前 API Key、接口地址和模型名称是否可用。' }
+      ],
+      0
+    );
+    return res.json({
+      message: '连接成功，API Key、接口地址和模型都可以使用。',
+      reply: String(content || '').slice(0, 80)
+    });
+  } catch (error) {
+    return fail(res, error.status || 502, friendlyError(error), error.code || 'AI_CONNECTION_FAILED');
+  }
+});
 app.delete('/api/me/data', requireAuth, (req, res, next) => {
   try {
     deleteUserData(req.user.id);
@@ -646,12 +683,13 @@ app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
   try {
     const files = Array.isArray(req.body?.files) ? req.body.files : [];
     const focus = String(req.body?.focus || '');
+    const sourceType = String(req.body?.sourceType || 'project');
     if (files.length === 0 || files.length > 200) {
-      return fail(res, 400, '项目文件数量需为 1 到 200 个');
+      return fail(res, 400, '请上传 1 到 200 个文件', 'INVALID_FILE_COUNT');
     }
     const totalChars = files.reduce((sum, file) => sum + String(file.content || '').length, 0);
     if (totalChars > 8 * 1024 * 1024) {
-      return fail(res, 400, '项目总大小不能超过 8MB');
+      return fail(res, 400, '项目内容不能超过 8MB', 'PROJECT_TOO_LARGE');
     }
     const normalized = files.map((file) => ({
       path: String(file.path || '未命名文件'),
@@ -660,16 +698,22 @@ app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
     assertQuota(req);
     const keyRecord = requireApiKey(req);
     const report = await analyzeProject(keyRecord, normalized, focus);
-    recordRun(
-      req.user.id,
-      'project',
-      normalized[0].path,
-      report
-    );
+    const title = String(req.body?.title || normalized[0].path || '项目');
+    const analysisRunId = recordRun(req.user.id, sourceType, title, report);
+    const session = learningStore.createSession({
+      userId: req.user.id,
+      analysisRunId,
+      sourceType,
+      fileName: title,
+      language: '',
+      code: normalized.map((item) => `// ${item.path}\n${item.content}`).join('\n\n').slice(0, 120000),
+      analysis: { kind: 'report', report, fileCount: normalized.length, totalLines: totalLines(normalized) }
+    });
     return res.json({
       report,
       fileCount: normalized.length,
-      totalLines: totalLines(normalized)
+      totalLines: totalLines(normalized),
+      learning_session_id: session.id
     });
   } catch (error) {
     return next(error);
@@ -678,43 +722,133 @@ app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
 
 app.post('/api/analyze/error', requireAuth, async (req, res, next) => {
   try {
-    const { code, log } = req.body || {};
-    if (!code || !log) return fail(res, 400, '代码和报错日志都不能为空');
+    const code = String(req.body?.code || '');
+    const log = String(req.body?.log || '');
+    if (!log.trim()) {
+      return fail(res, 400, '请先把报错内容粘贴进来；如果能补充相关代码，分析会更准。', 'ERROR_LOG_REQUIRED');
+    }
     assertQuota(req);
     const keyRecord = requireApiKey(req);
-    const report = await analyzeError(keyRecord, String(code), String(log));
-    recordRun(req.user.id, 'error', '报错反向推导', report);
-    return res.json({ report });
+    const report = await analyzeError(keyRecord, code, log);
+    const analysisRunId = recordRun(req.user.id, 'error', '报错日志', report);
+    const session = learningStore.createSession({
+      userId: req.user.id,
+      analysisRunId,
+      sourceType: 'error',
+      fileName: '报错日志',
+      language: '',
+      code: code || log,
+      analysis: { kind: 'report', report }
+    });
+    return res.json({ report, learning_session_id: session.id });
   } catch (error) {
     return next(error);
   }
 });
 
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function stripHtml(value) {
+  return decodeHtmlEntities(String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPageInfo(url, rawHtml, contentType) {
+  const html = String(rawHtml || '');
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const descriptionMatch = html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']*)["']/i)
+    || html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["'](?:description|og:description)["']/i);
+  const headings = [...html.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi)]
+    .map((match) => ({ level: Number(match[1]), text: stripHtml(match[2]) }))
+    .filter((item) => item.text)
+    .slice(0, 30);
+  const codeBlocks = [...html.matchAll(/<(pre|code)[^>]*>([\s\S]*?)<\/\1>/gi)]
+    .map((match) => stripHtml(match[2]))
+    .filter(Boolean)
+    .slice(0, 12);
+  const links = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)]
+    .map((match) => ({ href: match[1], text: stripHtml(match[2]) }))
+    .filter((item) => item.text && !/^javascript:/i.test(item.href))
+    .slice(0, 40);
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyText = stripHtml(bodyMatch ? bodyMatch[1] : html).slice(0, 24000);
+  return {
+    url,
+    contentType,
+    title: stripHtml(titleMatch ? titleMatch[1] : ''),
+    description: stripHtml(descriptionMatch ? descriptionMatch[1] : ''),
+    headings,
+    codeBlocks,
+    links,
+    bodyText,
+    html: html.slice(0, 120000)
+  };
+}
+
 app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
   try {
     const inputUrl = String(req.body?.url || '').trim();
-    const parsed = new URL(inputUrl);
+    let parsed;
+    try {
+      parsed = new URL(inputUrl);
+    } catch (error) {
+      return fail(res, 400, '网页地址格式不正确，请输入 http 或 https 开头的网址', 'INVALID_URL');
+    }
     if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return fail(res, 400, '只支持 http 或 https 地址');
+      return fail(res, 400, '目前只支持 http 或 https 网页地址', 'INVALID_URL_PROTOCOL');
     }
     assertQuota(req);
     const keyRecord = requireApiKey(req);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-    const response = await fetch(inputUrl, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
-    });
-    clearTimeout(timer);
-    if (!response.ok) throw new Error(`网页请求失败：${response.status}`);
+    const timer = setTimeout(() => controller.abort(), 25000);
+    let response;
+    try {
+      response = await fetch(inputUrl, {
+        redirect: 'follow',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      return fail(res, 502, `${u([0x65E0,0x6CD5,0x6253,0x5F00,0x8FD9,0x4E2A,0x7F51,0x9875,0xFF0C,0x670D,0x52A1,0x8FD4,0x56DE,0x4E86])} ${response.status}${u([0xFF0C,0x8BF7,0x68C0,0x67E5,0x5730,0x5740,0x662F,0x5426,0x53EF,0x516C,0x5F00,0x8BBF,0x95EE])}`, 'PAGE_FETCH_FAILED');
+    }
     const contentType = response.headers.get('content-type') || '';
     const raw = await response.text();
-    const content = raw.length > 800000 ? raw.slice(0, 800000) : raw;
-    const report = await analyzeUrl(keyRecord, inputUrl, { contentType, content });
-    recordRun(req.user.id, 'url', inputUrl, report);
-    return res.json({ report, contentType });
+    if (/image\//i.test(contentType)) {
+      return fail(res, 400, '这个地址不是网页，请换一个普通网页地址', 'NOT_A_WEBPAGE');
+    }
+    const pageInfo = extractPageInfo(inputUrl, raw, contentType);
+    const report = await analyzeUrl(keyRecord, inputUrl, pageInfo);
+    const analysisRunId = recordRun(req.user.id, 'url', pageInfo.title || inputUrl, report);
+    const session = learningStore.createSession({
+      userId: req.user.id,
+      analysisRunId,
+      sourceType: 'url',
+      fileName: pageInfo.title || inputUrl,
+      language: '',
+      code: [pageInfo.title, pageInfo.description, pageInfo.bodyText].filter(Boolean).join('\n\n'),
+      analysis: { kind: 'report', report, pageInfo: { title: pageInfo.title, description: pageInfo.description, url: inputUrl } }
+    });
+    return res.json({ report, contentType, learning_session_id: session.id, pageTitle: pageInfo.title });
   } catch (error) {
+    if (error && error.name === 'AbortError') {
+      return fail(res, 504, '打开网页超时了，请稍后重试或换一个地址', 'PAGE_TIMEOUT');
+    }
     return next(error);
   }
 });

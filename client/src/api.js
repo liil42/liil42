@@ -19,7 +19,10 @@ export function clearToken() {
 }
 
 function buildNetworkError(cause) {
-  const error = new Error(API_BASE_URL ? '无法连接已配置的后端服务，请检查后端地址是否可访问' : '无法连接后端服务，请确认 3002 端口已经启动');
+  const message = API_BASE_URL
+    ? '\u65e0\u6cd5\u8fde\u63a5\u540e\u7aef\u670d\u52a1\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5'
+    : '\u65e0\u6cd5\u8fde\u63a5\u540e\u7aef\u670d\u52a1\uff0c\u8bf7\u786e\u8ba4 3002 \u7aef\u53e3\u5df2\u7ecf\u542f\u52a8';
+  const error = new Error(message);
   error.status = 0;
   error.code = 'BACKEND_DOWN';
   error.cause = cause;
@@ -29,12 +32,12 @@ function buildNetworkError(cause) {
 function messageFromBody(data, status) {
   if (data && data.error && data.error.message) return data.error.message;
   if (data && data.message) return data.message;
-  if (status === 401) return '登录状态已失效，请重新登录';
-  if (status === 403) return '当前账号没有权限执行此操作';
-  if (status === 404) return '请求的内容不存在';
-  if (status === 429) return '请求过于频繁，请稍后再试';
-  if (status >= 500) return '服务暂时不可用，请稍后重试';
-  return '请求处理失败，请稍后重试';
+  if (status === 401) return '\u4f60\u6ca1\u6709\u6743\u9650\u8fdb\u884c\u8fd9\u4e2a\u64cd\u4f5c';
+  if (status === 403) return '\u4f60\u6ca1\u6709\u6743\u9650\u8fdb\u884c\u8fd9\u4e2a\u64cd\u4f5c';
+  if (status === 404) return '\u6ca1\u6709\u627e\u5230\u8981\u8bbf\u95ee\u7684\u5185\u5bb9';
+  if (status === 429) return '\u8bf7\u6c42\u5904\u7406\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
+  if (status >= 500) return '\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
+  return '\u8bf7\u6c42\u5904\u7406\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
 }
 
 export async function api(path, options = {}) {

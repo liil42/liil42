@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { CheckCircle2, Filter, RotateCcw, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import LearningWorkspace from './LearningWorkspace';
 import LoadingView from './LoadingView';
 
 const STATUS_LABELS = {
-  unresolved: '未掌握',
-  reviewing: '复习中',
+  unresolved: '没懂',
+  reviewing: '有一点懂',
   resolved: '已掌握'
 };
 
@@ -70,7 +70,7 @@ export default function MistakePanel({ refreshKey = 0 }) {
         body: JSON.stringify({ correct })
       });
       setReviewResult(data.mistake);
-      setNotice(correct ? '答对了，下次复习时间已延后' : '没关系，这道题明天再复习一次');
+      setNotice(correct ? '答对了，下次复习时间已经延后' : '没关系，这道题明天再复习一次');
       setDueCount(data.dueCount || 0);
       await load();
     } catch (err) {
@@ -121,8 +121,8 @@ export default function MistakePanel({ refreshKey = 0 }) {
         <div className="mistake-filters">
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="">全部状态</option>
-            <option value="unresolved">未掌握</option>
-            <option value="reviewing">复习中</option>
+            <option value="unresolved">没懂</option>
+            <option value="reviewing">有一点懂</option>
             <option value="resolved">已掌握</option>
             <option value="due">今日待复习</option>
           </select>
@@ -149,7 +149,7 @@ export default function MistakePanel({ refreshKey = 0 }) {
           {mistakes.map((item) => (
             <div className={`mistake-item ${active?.id === item.id ? 'active' : ''}`} key={item.id}>
               <button className="mistake-main" onClick={() => setActive(item)}>
-                <span className={`mistake-status ${item.status}`}>{STATUS_LABELS[item.status]}</span>
+                <span className={`mistake-status ${item.status}`}>{STATUS_LABELS[item.status] || '没懂'}</span>
                 <strong>{item.title}</strong>
                 <p>{item.question}</p>
                 <small>

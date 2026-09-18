@@ -8,18 +8,19 @@ function wait(ms) {
 function friendlyError(error) {
   const raw = String((error && error.message) || error || '');
   if (/invalid api key|authentication|unauthorized|invalid_api_key|insufficient|balance|API Key/i.test(raw)) {
-    return 'AI 服务鉴权失败，请检查 API Key 是否正确、是否还有余额';
+    return 'AI ?????????? API Key ???????????';
   }
-  if (/aborted|timeout|timed out|ETIMEDOUT/i.test(raw)) return 'AI 服务响应超时，请稍后重试';
+  if (/aborted|timeout|timed out|ETIMEDOUT/i.test(raw)) return 'AI ????????????';
   if (/fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket|network|UND_ERR/i.test(raw)) {
-    return '无法连接 AI 服务，请检查网络或接口地址';
+    return '???? AI ?????????????';
   }
-  if (/429|rate limit|too many/i.test(raw)) return 'AI 服务请求过于频繁，请稍后再试';
-  if (/50[0-9]|502|503|504/.test(raw)) return 'AI 服务暂时不可用，请稍后重试';
-  if (/JSON|json/i.test(raw)) return 'AI 返回内容格式异常，已自动重试，请再试一次';
-  if (/400/.test(raw)) return 'AI 请求参数有误，请检查代码内容后重试';
-  return 'AI 服务暂时不可用，请稍后重试';
+  if (/429|rate limit|too many/i.test(raw)) return 'AI ??????????????';
+  if (/50[0-9]|502|503|504/.test(raw)) return 'AI ?????????????';
+  if (/JSON|json/i.test(raw)) return 'AI ????????????????????';
+  if (/400/.test(raw)) return 'AI ???????????????';
+  return 'AI ?????????????';
 }
+
 function withStatus(message, status) {
   const error = new Error(message);
   error.status = status;
@@ -33,7 +34,7 @@ function buildEndpoint(provider, baseUrl) {
   };
   const info = defaults[provider] || { baseUrl: '', model: 'deepseek-chat' };
   const endpointBase = (provider === 'custom' && baseUrl) ? baseUrl : info.baseUrl;
-  if (!endpointBase) throw withStatus('自定义接口必须填写 baseUrl', 400);
+  if (!endpointBase) throw withStatus('????????? baseUrl', 400);
   return { endpoint: `${endpointBase.replace(/\/+$/, '')}/chat/completions`, model: info.model };
 }
 
@@ -59,20 +60,20 @@ async function requestOnce(apiKey, endpoint, selectedModel, messages, temperatur
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       if (response.status === 401 || response.status === 403) {
-        throw new Error('AI 服务鉴权失败：请检查 API Key 是否正确、是否有余额');
+        throw new Error('AI ?????????? API Key ??????????');
       }
       if (response.status === 429) {
-        throw new Error('AI 服务请求过于频繁，请稍后再试');
+        throw new Error('AI ??????????????');
       }
       if (response.status >= 500) {
-        throw new Error('AI 服务暂时不可用，请稍后重试');
+        throw new Error('AI ?????????????');
       }
-      throw new Error(`AI 服务返回 ${response.status}：${text.slice(0, 120)}`);
+      throw new Error(`AI ???? ${response.status}?${text.slice(0, 120)}`);
     }
 
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error('AI 服务没有返回内容');
+    if (!content) throw new Error('AI ????????');
     return content;
   } finally {
     clearTimeout(timer);
@@ -138,7 +139,7 @@ function repairJson(text) {
 
 function extractJson(text) {
   const raw = String(text || '').trim();
-  if (!raw) throw new Error('AI 返回内容为空');
+  if (!raw) throw new Error('AI ??????');
 
   const candidates = [];
   const fenced = stripCodeFence(raw);
@@ -162,16 +163,16 @@ function extractJson(text) {
     try {
       return JSON.parse(candidate);
     } catch (error) {
-      // 继续尝试下一种候选
+      // ????????????
     }
     try {
       return JSON.parse(repairJson(candidate));
     } catch (error) {
-      // 修复失败，继续尝试下一种候选
+      // ?????????????????
     }
   }
 
-  throw new Error('AI 返回内容不是有效 JSON');
+  throw new Error('AI ???????? JSON');
 }
 
 async function callAIJson(apiKey, provider, baseUrl, model, messages, temperature = 0.1) {

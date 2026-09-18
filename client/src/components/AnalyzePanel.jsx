@@ -11,7 +11,6 @@ import {
   FileCode2,
   FilePenLine,
   FolderOpen,
-  Github,
   Globe,
   KeyRound,
   Loader2,
@@ -27,13 +26,11 @@ const MORE_MODES = [
   { id: 'file', label: '上传文件', icon: FileCode2 },
   { id: 'zip', label: '项目压缩包', icon: Archive },
   { id: 'folder', label: '本地文件夹', icon: FolderOpen },
-  { id: 'github', label: 'GitHub', icon: Github },
   { id: 'url', label: '网页地址', icon: Globe },
   { id: 'error', label: '报错日志', icon: Bug }
 ];
 
 const EXAMPLE_CODE = 'const total = price * count;';
-
 const BINARY_EXT = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|eot|pdf|zip|rar|7z|tar|gz|mp4|mp3|exe|dll|so|dylib|class|jar|pyc)$/i;
 
 function isTextFile(name) {
@@ -59,7 +56,6 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
   const [result, setResult] = useState(null);
   const [pasteCode, setPasteCode] = useState('');
   const [pasteLanguage, setPasteLanguage] = useState('');
-  const [githubUrl, setGithubUrl] = useState('');
   const [pageUrl, setPageUrl] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [errorLog, setErrorLog] = useState('');
@@ -80,7 +76,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
   async function runSnippet(code, filename, language) {
     if (!code.trim()) {
-      setError('先粘贴或上传代码，再让我讲');
+      setError('先粘贴或上传代码，再让我讲。');
       return;
     }
     setError('');
@@ -102,9 +98,9 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     }
   }
 
-  async function runProject(files, title) {
+  async function runProject(files, title, sourceType = 'project') {
     if (!files.length) {
-      setError('没有可以分析的文字文件');
+      setError('没有可以分析的文字文件。');
       return;
     }
     setError('');
@@ -114,7 +110,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     try {
       const data = await api('/api/analyze/project', {
         method: 'POST',
-        body: JSON.stringify({ files, focus: '' })
+        body: JSON.stringify({ files, focus: '', title, sourceType })
       });
       setResult({
         kind: 'report',
@@ -136,7 +132,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     event.target.value = '';
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      setError('单个文件不能超过 2MB');
+      setError('单个文件不能超过 2MB。');
       return;
     }
     const text = await file.text();
@@ -149,7 +145,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     event.target.value = '';
     if (!file) return;
     if (file.size > 50 * 1024 * 1024) {
-      setError('项目压缩包不能超过 50MB');
+      setError('项目压缩包不能超过 50MB。');
       return;
     }
     setError('');
@@ -160,26 +156,26 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       zip.forEach((relativePath, entry) => {
         if (!entry.dir && isTextFile(relativePath)) entries.push({ path: relativePath, entry });
       });
-      if (entries.length === 0) throw new Error('压缩包里没有文字文件');
+      if (entries.length === 0) throw new Error('压缩包里没有文字文件。');
       const files = [];
       let totalChars = 0;
       for (const item of entries.slice(0, 200)) {
         const content = await item.entry.async('string');
         totalChars += content.length;
-        if (totalChars > 8 * 1024 * 1024) throw new Error('解压后的项目超过 8MB');
+        if (totalChars > 8 * 1024 * 1024) throw new Error('解压后的项目超过 8MB。');
         files.push({ path: item.path, content });
       }
-      await runProject(files, file.name);
+      setLoading(false);
+      await runProject(files, file.name, 'zip');
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   }
 
   async function selectLocalFolder() {
     if (!('showDirectoryPicker' in window)) {
-      setError('本地文件夹写入需要 Chrome 或 Edge');
+      setError('本地文件夹写入需要 Chrome 或 Edge。');
       return;
     }
     setError('');
@@ -202,8 +198,8 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       }
 
       await walk(directory, '');
-      if (handles.length === 0) throw new Error('没有找到可以分析的文字文件');
-      if (handles.length > 200) throw new Error('项目文件超过 200 个，请选择更小的文件夹');
+      if (handles.length === 0) throw new Error('没有找到可以分析的文字文件。');
+      if (handles.length > 200) throw new Error('项目文件超过 200 个，请选择更小的文件夹。');
 
       const files = [];
       let totalChars = 0;
@@ -211,7 +207,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         const file = await item.handle.getFile();
         const content = await file.text();
         totalChars += content.length;
-        if (totalChars > 8 * 1024 * 1024) throw new Error('项目总大小超过 8MB');
+        if (totalChars > 8 * 1024 * 1024) throw new Error('项目总大小超过 8MB。');
         files.push({ path: item.path, content });
       }
 
@@ -219,10 +215,10 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       setLocalFiles(files);
       setSelectedPath(files[0].path);
       setAnnotate(null);
-      await runProject(files, '本地项目');
+      setLoading(false);
+      await runProject(files, '本地项目', 'folder');
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message);
-    } finally {
       setLoading(false);
     }
   }
@@ -249,7 +245,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     if (!annotate || !annotate.annotated) return;
     const handle = localHandles.find((item) => item.path === annotate.path)?.handle;
     if (!handle) {
-      setError('浏览器没有保留写入权限，请重新选择本地文件夹');
+      setError('浏览器没有保留写入权限，请重新选择本地文件夹。');
       return;
     }
     try {
@@ -263,41 +259,9 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     }
   }
 
-  async function handleGithub() {
-    if (!githubUrl.trim()) {
-      setError('请输入 GitHub 地址');
-      return;
-    }
-    setError('');
-    setResult(null);
-    setSnippet(null);
-    setLoading(true);
-    try {
-      const data = await api('/api/analyze/github', {
-        method: 'POST',
-        body: JSON.stringify({ url: githubUrl, focus: '' })
-      });
-      if (data.explanation) {
-        setSnippet(data);
-      } else {
-        setResult({
-          kind: 'report',
-          title: githubUrl,
-          report: data.report,
-          meta: `${data.fileCount || 0} 个文件，${data.totalLines || 0} 行`
-        });
-      }
-      await refreshUser();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleUrl() {
     if (!pageUrl.trim()) {
-      setError('请输入网页地址');
+      setError('请输入网页地址。');
       return;
     }
     setError('');
@@ -309,8 +273,14 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         method: 'POST',
         body: JSON.stringify({ url: pageUrl })
       });
-      setResult({ kind: 'report', title: pageUrl, report: data.report, meta: data.contentType || '网页分析' });
+      setResult({
+        kind: 'report',
+        title: data.pageTitle || pageUrl,
+        report: data.report,
+        meta: '网页结构、功能流程和优化建议'
+      });
       await refreshUser();
+      onHistoryChanged?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -319,8 +289,8 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
   }
 
   async function handleErrorAnalysis() {
-    if (!errorCode.trim() || !errorLog.trim()) {
-      setError('代码和报错日志不能为空');
+    if (!errorLog.trim()) {
+      setError('请先把报错内容粘贴进来；如果能补充相关代码，分析会更准。');
       return;
     }
     setError('');
@@ -332,8 +302,9 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         method: 'POST',
         body: JSON.stringify({ code: errorCode, log: errorLog })
       });
-      setResult({ kind: 'report', title: '报错反向推导', report: data.report, meta: '治标 + 治本' });
+      setResult({ kind: 'report', title: '报错日志分析', report: data.report, meta: '快速修复 + 根本原因' });
       await refreshUser();
+      onHistoryChanged?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -371,7 +342,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         onClick={() => setShowMoreModes((current) => !current)}
       >
         <Plus size={15} />
-        {showMoreModes ? '收起更多分析方式' : '更多分析方式：文件、项目、GitHub、报错日志'}
+        {showMoreModes ? '收起更多分析方式' : '更多分析方式：文件、项目、网页地址、报错日志'}
       </button>
 
       {showMoreModes && (
@@ -491,23 +462,6 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
           </div>
         )}
 
-        {mode === 'github' && (
-          <div className="stack">
-            <label className="field">
-              <span>GitHub 地址</span>
-              <input
-                value={githubUrl}
-                onChange={(event) => setGithubUrl(event.target.value)}
-                placeholder="https://github.com/owner/repo"
-              />
-            </label>
-            <button className="btn btn-primary" onClick={handleGithub} disabled={loading}>
-              {loading ? <Loader2 size={16} className="spin" /> : <Github size={16} />}
-              分析仓库
-            </button>
-          </div>
-        )}
-
         {mode === 'url' && (
           <div className="stack">
             <label className="field">
@@ -518,32 +472,34 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
                 placeholder="https://example.com"
               />
             </label>
+            <p className="muted">我会读取这个网页的公开内容，分析页面做什么、有哪些功能、流程怎么走，并给出优化建议和创新点。</p>
             <button className="btn btn-primary" onClick={handleUrl} disabled={loading}>
               {loading ? <Loader2 size={16} className="spin" /> : <Globe size={16} />}
-              分析网页
+              分析这个网页
             </button>
           </div>
         )}
 
         {mode === 'error' && (
           <div className="stack">
-            <textarea
-              className="code-textarea"
-              rows={8}
-              value={errorCode}
-              onChange={(event) => setErrorCode(event.target.value)}
-              placeholder="粘贴代码"
-            />
+            <p className="muted">先把报错内容粘贴到下面。相关代码可以不填；如果一起粘贴，分析会更准确。</p>
             <textarea
               className="code-textarea log"
-              rows={8}
+              rows={10}
               value={errorLog}
               onChange={(event) => setErrorLog(event.target.value)}
-              placeholder="粘贴报错日志"
+              placeholder="粘贴报错内容，例如：Cannot read properties of undefined"
+            />
+            <textarea
+              className="code-textarea"
+              rows={6}
+              value={errorCode}
+              onChange={(event) => setErrorCode(event.target.value)}
+              placeholder="选填：粘贴报错相关的代码"
             />
             <button className="btn btn-primary" onClick={handleErrorAnalysis} disabled={loading}>
               {loading ? <Loader2 size={16} className="spin" /> : <Bug size={16} />}
-              推导报错
+              帮我看懂这个报错
             </button>
           </div>
         )}
@@ -559,6 +515,10 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
               <h2>{result.title}</h2>
               <span>{result.meta}</span>
             </div>
+            <button className="btn" onClick={() => downloadText('分析报告.md', result.report)}>
+              <Download size={16} />
+              下载报告
+            </button>
           </div>
           <MarkdownView content={result.report} />
         </div>
@@ -566,17 +526,20 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
       {annotate?.annotated && (
         <div className="action-row">
-          <button
-            className="btn"
-            onClick={() => downloadText(annotate.path, annotate.annotated)}
-          >
+          <button className="btn" onClick={() => downloadText(`${annotate.path}.annotated.txt`, annotate.annotated)}>
             <Download size={16} />
             下载注释版
           </button>
         </div>
       )}
 
-      {snippet && <SnippetResult data={snippet} onClose={() => setSnippet(null)} />}
+      {snippet && (
+        <SnippetResult
+          data={snippet}
+          user={user}
+          onHistoryChanged={onHistoryChanged}
+        />
+      )}
     </div>
   );
 }

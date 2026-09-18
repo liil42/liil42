@@ -1901,3 +1901,28 @@ html[data-theme="light"] body {
     padding-top: 16px;
   }
 }
+
+.loading-progress {
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.loading-progress > div {
+  display: grid;
+  gap: 4px;
+}
+
+.loading-progress strong {
+  color: var(--text);
+}
+
+.loading-progress span,
+.loading-progress small {
+  color: var(--muted);
+}
+
+.loading-progress small {
+  line-height: 1.5;
+}
