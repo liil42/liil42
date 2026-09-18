@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Edit3, History, Plus, Tag, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import LearningWorkspace from './LearningWorkspace';
@@ -6,10 +6,13 @@ import LoadingView from './LoadingView';
 
 const TYPE_LABELS = {
   snippet: '代码片段',
+  file: '代码文件',
   project: '项目分析',
+  zip: '项目压缩包',
+  folder: '本地项目',
   github: 'GitHub 项目',
   url: '网页分析',
-  error: '报错推导',
+  error: '报错日志',
   annotate: '注释版'
 };
 
@@ -187,7 +190,7 @@ export default function HistoryPanel({ refreshKey = 0 }) {
           {filtered.map((item) => (
             <div className={`history-item ${activeSession?.id === item.id ? 'active' : ''}`} key={item.id}>
               <button className="history-open" onClick={() => setActiveSession(item)}>
-                <span className="type-badge">{item.categoryName || '未分类'}</span>
+                <span className="type-badge">{TYPE_LABELS[item.sourceType] || item.categoryName || '未分类'}</span>
                 <strong>{item.fileName}</strong>
                 <small>{new Date(item.createdAt).toLocaleString('zh-CN')}</small>
               </button>
@@ -224,7 +227,7 @@ export default function HistoryPanel({ refreshKey = 0 }) {
               <div className="report-header">
                 <div>
                   <h2>{activeSession.fileName}</h2>
-                  <span>{activeSession.categoryName || '未分类'}</span>
+                  <span>{TYPE_LABELS[activeSession.sourceType] || activeSession.categoryName || '未分类'}</span>
                 </div>
                 <button className="icon-btn" title="关闭" onClick={() => setActiveSession(null)}>
                   <X size={18} />

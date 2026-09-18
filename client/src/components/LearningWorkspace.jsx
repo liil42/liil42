@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Code2,
@@ -65,36 +65,36 @@ function InsightBody({ insight, noviceMode = true }) {
       )}
       {detailsOpen && (
         <>
-      <div className="execution-grid">
-        {insight.execution_before && (
-          <div><span>执行前</span><p><HighlightedText text={insight.execution_before} /></p></div>
-        )}
-        {insight.execution_after && (
-          <div><span>执行后</span><p><HighlightedText text={insight.execution_after} /></p></div>
-        )}
-      </div>
-      {insight.why_here && (
-        <div className="line-insight-block">
-          <strong>为什么放在这里</strong>
-          <p><HighlightedText text={insight.why_here} /></p>
-        </div>
-      )}
-      {insight.if_wrong && (
-        <div className="line-insight-block">
-          <strong>写错会怎样</strong>
-          <p><HighlightedText text={insight.if_wrong} /></p>
-        </div>
-      )}
-      {Array.isArray(insight.must_know) && insight.must_know.length > 0 && (
-        <div className="line-insight-block must-know">
-          <strong>必须记住</strong>
-          <ul>
-            {insight.must_know.map((item, index) => (
-              <li key={index}><HighlightedText text={item} /></li>
-            ))}
-          </ul>
-        </div>
-      )}
+          <div className="execution-grid">
+            {insight.execution_before && (
+              <div><span>执行前</span><p><HighlightedText text={insight.execution_before} /></p></div>
+            )}
+            {insight.execution_after && (
+              <div><span>执行后</span><p><HighlightedText text={insight.execution_after} /></p></div>
+            )}
+          </div>
+          {insight.why_here && (
+            <div className="line-insight-block">
+              <strong>为什么放在这里</strong>
+              <p><HighlightedText text={insight.why_here} /></p>
+            </div>
+          )}
+          {insight.if_wrong && (
+            <div className="line-insight-block">
+              <strong>写错会怎样</strong>
+              <p><HighlightedText text={insight.if_wrong} /></p>
+            </div>
+          )}
+          {Array.isArray(insight.must_know) && insight.must_know.length > 0 && (
+            <div className="line-insight-block must-know">
+              <strong>必须记住</strong>
+              <ul>
+                {insight.must_know.map((item, index) => (
+                  <li key={index}><HighlightedText text={item} /></li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -208,7 +208,7 @@ export default function LearningWorkspace({
         understandings: [...(current?.understandings || []), response.understanding]
       }));
       setUnderstanding('');
-      setNotice('你的理解已保存，可以在下面回看');
+      setNotice('你的理解已保存，可以在下面回顾');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -354,8 +354,8 @@ export default function LearningWorkspace({
 
       <div className="learning-detail">
         <div className="snippet-section">
-          <div className="section-title"><CheckCircle2 size={16} />整体通俗解释</div>
-          <p className="explanation"><HighlightedText text={analysis.explanation || '暂无解释'} /></p>
+          <div className="section-title"><CheckCircle2 size={16} />整体通俗讲解</div>
+          <p className="explanation"><HighlightedText text={analysis.explanation || '暂无讲解'} /></p>
         </div>
 
         {!selectedLine && (
@@ -389,92 +389,42 @@ export default function LearningWorkspace({
                 进阶模式
               </button>
             </div>
+
             <InsightBody insight={currentInsight?.insight} noviceMode={noviceMode} />
 
-            <div className="learning-box practice-box">
-              <div className="section-title"><Lightbulb size={16} />小练习，检查自己真的懂了</div>
-              <div className="practice-types">
-                <button type="button" className={`chip ${practiceType === 'predict' ? 'active' : ''}`} onClick={() => setPracticeType('predict')}>预测结果</button>
-                <button type="button" className={`chip ${practiceType === 'change' ? 'active' : ''}`} onClick={() => setPracticeType('change')}>改一个变量</button>
-                <button type="button" className={`chip ${practiceType === 'restate' ? 'active' : ''}`} onClick={() => setPracticeType('restate')}>复述这一行</button>
-              </div>
-              <p className="practice-question">{practiceQuestionText(practiceType, selectedLine)}</p>
-              <textarea
-                rows={3}
-                value={practiceAnswer}
-                onChange={(event) => setPracticeAnswer(event.target.value)}
-                placeholder="用你自己的话写下来，写错也没关系"
-              />
-              <div className="action-row">
-                <button className="btn btn-primary" onClick={submitPractice} disabled={loading || !practiceAnswer.trim()}>
-                  {loading ? <Loader2 size={16} className="spin" /> : <CheckCircle2 size={16} />}
-                  检查我的答案
-                </button>
-                <button className="btn" onClick={() => markLearned('learned')} disabled={loading}>我学会了</button>
-                <button className="btn btn-ghost" onClick={() => markLearned('not-yet')} disabled={loading}>我还不会</button>
-              </div>
-              {practiceFeedback && (
-                <div className="practice-feedback">
-                  {Array.isArray(practiceFeedback.correct_parts) && practiceFeedback.correct_parts.length > 0 && (
-                    <div className="feedback-correct">
-                      <strong>理解对的地方</strong>
-                      {practiceFeedback.correct_parts.map((item, index) => <p key={index}><HighlightedText text={item} /></p>)}
-                    </div>
-                  )}
-                  {Array.isArray(practiceFeedback.missing_parts) && practiceFeedback.missing_parts.length > 0 && (
-                    <div className="feedback-missing">
-                      <strong>还可以补充</strong>
-                      {practiceFeedback.missing_parts.map((item, index) => <p key={index}><HighlightedText text={item} /></p>)}
-                    </div>
-                  )}
-                  {Array.isArray(practiceFeedback.wrong_parts) && practiceFeedback.wrong_parts.map((part, index) => (
-                    <div className="feedback-wrong" key={index}>
-                      <strong>这里需要修正</strong>
-                      <p>{part.what_user_said}</p>
-                      <p><HighlightedText text={part.why_wrong} /></p>
-                      <p><HighlightedText text={part.correct_understanding} /></p>
-                    </div>
-                  ))}
-                  {practiceFeedback.standard_explanation && (
-                    <div className="standard-explanation">
-                      <strong>标准答案</strong>
-                      <p><HighlightedText text={practiceFeedback.standard_explanation} /></p>
-                    </div>
-                  )}
-                  {practiceFeedback.suggest_mistake && <p className="guiding-question">建议把这题加入错题库，过几天再复习一次。</p>}
-                </div>
-              )}
-            </div>
-
             <div className="learning-box">
-              <div className="section-title"><MessageSquareText size={16} />还是不懂，继续问</div>
+              <div className="section-title"><MessageSquareText size={16} />这一行还是没懂？直接问</div>
               <textarea
                 rows={3}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="例如：这个函数为什么要传两个参数？"
+                placeholder="例如：为什么这里要用 await？"
               />
-              <button className="btn" onClick={askQuestion} disabled={loading || !question.trim()}>
-                <Send size={16} />发送追问
+              <button className="btn btn-primary" onClick={askQuestion} disabled={loading || !question.trim()}>
+                <Send size={16} />提交问题
               </button>
               {currentQuestions.map((item) => (
-                <div className="question-record" key={item.id}>
-                  <strong>{item.question}</strong>
-                  <p><HighlightedText text={item.answer.direct_answer} /></p>
-                  {item.answer.analogy && <p className="insight-analogy"><HighlightedText text={item.answer.analogy} /></p>}
-                  {item.answer.correction && <p className="error-correction"><HighlightedText text={item.answer.correction} /></p>}
-                  {item.answer.key_takeaway && <p className="key-takeaway"><HighlightedText text={item.answer.key_takeaway} /></p>}
+                <div className="qa-record" key={item.id}>
+                  <p className="qa-question">你问：{item.question}</p>
+                  <p><HighlightedText text={item.answer?.direct_answer} /></p>
+                  {item.answer?.analogy && <p><HighlightedText text={item.answer.analogy} /></p>}
+                  {Array.isArray(item.answer?.step_by_step) && item.answer.step_by_step.map((step, index) => (
+                    <p key={index}><HighlightedText text={step} /></p>
+                  ))}
+                  {item.answer?.correction && <p><HighlightedText text={item.answer.correction} /></p>}
+                  {item.answer?.self_check && <p className="self-check">{item.answer.self_check}</p>}
                 </div>
               ))}
             </div>
 
             <div className="learning-box">
-              <div className="section-title"><Lightbulb size={16} />用我自己的话说一遍</div>
+              <div className="section-title"><Lightbulb size={16} />我自己是怎么理解的</div>
+              <p className="muted">可以用自己的话说，不要求专业。AI 会指出哪里理解对了、哪里还要补充。</p>
               <textarea
                 rows={4}
                 value={understanding}
                 onChange={(event) => setUnderstanding(event.target.value)}
-                placeholder="不用担心说错，先写下你现在是怎么理解的。"
+                placeholder="用你的话写一遍这行代码在做什么"
               />
               <button className="btn btn-primary" onClick={saveUnderstanding} disabled={loading || !understanding.trim()}>
                 <Save size={16} />保存并让 AI 点评
@@ -515,11 +465,33 @@ export default function LearningWorkspace({
             </div>
 
             <div className="learning-box">
+              <div className="section-title"><HelpCircle size={16} />练一练</div>
+              <div className="practice-task">
+                <span>把这行代码讲给别人听</span>
+                <textarea
+                  rows={3}
+                  value={practiceAnswer}
+                  onChange={(event) => setPracticeAnswer(event.target.value)}
+                  placeholder={practiceQuestionText(practiceType, selectedLine)}
+                />
+                <button className="btn btn-primary" onClick={submitPractice} disabled={loading || !practiceAnswer.trim()}>
+                  <CheckCircle2 size={16} />提交练习
+                </button>
+                {practiceFeedback && (
+                  <div className="practice-feedback">
+                    <p><HighlightedText text={practiceFeedback.encouragement} /></p>
+                    {practiceFeedback.next_hint && <p><HighlightedText text={practiceFeedback.next_hint} /></p>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="learning-box">
               <div className="section-title"><HelpCircle size={16} />收进错题库</div>
               {!addingMistake && (
                 <div className="action-row">
                   <button className="btn" onClick={() => setAddingMistake(true)}>加入错题</button>
-                  <button className="btn btn-ghost" onClick={addFunctionMistake} disabled={loading}>把这段函数加入错题</button>
+                  <button className="btn btn-ghost" onClick={addFunctionMistake} disabled={loading}>把这段函数加入错题库</button>
                 </div>
               )}
               {addingMistake && (
@@ -571,7 +543,7 @@ export default function LearningWorkspace({
               <ShieldAlert size={14} />风险 {analysis.risk_level || '低'}
             </span>
           </div>
-          <button className="icon-btn" title="关闭" onClick={onClose}><X size={18} /></button>
+          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
         </div>
         {workspace}
       </div>
