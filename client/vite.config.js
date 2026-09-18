@@ -2,8 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1] || 'liil42';
+const productionApiBaseUrl = process.env.VITE_API_BASE_URL || (process.env.GITHUB_ACTIONS ? 'https://daimaxuexi-production.up.railway.app' : '');
 
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(productionApiBaseUrl)
+  },
   base: process.env.VITE_BASE_PATH || (process.env.GITHUB_ACTIONS ? `/${repoName}/` : '/'),
   plugins: [react()],
   build: {
