@@ -214,14 +214,21 @@ app.post('/api/settings/test-connection', requireAuth, async (req, res) => {
         { role: 'system', content: '你只需要回复：连接成功。' },
         { role: 'user', content: '请测试当前 API Key、接口地址和模型名称是否可用。' }
       ],
-      0
+      0,
+      false
     );
     return res.json({
       message: '连接成功，API Key、接口地址和模型都可以使用。',
       reply: String(content || '').slice(0, 80)
     });
   } catch (error) {
-    return fail(res, error.status || 502, friendlyError(error), error.code || 'AI_CONNECTION_FAILED');
+    const reason = friendlyError(error);
+    console.error('[测试连接失败] ' + reason + ' | 原始错误: ' + String((error && error.message) || error));
+    return res.status(400).json({
+      success: false,
+      error: { code: 'AI_CONNECTION_FAILED', message: reason },
+      message: reason
+    });
   }
 });
 app.delete('/api/me/data', requireAuth, (req, res, next) => {
@@ -928,7 +935,8 @@ app.use((error, req, res, next) => {
   console.error(`[请求错误] ${req.method} ${req.originalUrl}\n${detail}`);
   const status = Number(error && error.status) || 500;
   const message = publicErrorMessage(error);
-  res.status(status).json({ success: false, error: { code: error.code || 'REQUEST_FAILED', message }, message });
+  const code = error.code || (String(message).startsWith('你的 API Key') || String(message).startsWith('你填的模型') || String(message).startsWith('AI ') || String(message).startsWith('分析超过') || String(message).startsWith('无法连接 AI') || String(message).startsWith('请求太频繁') ? 'AI_CONNECTION_FAILED' : 'REQUEST_FAILED');
+  res.status(status).json({ success: false, error: { code, message }, message });
 });
 
 const port = process.env.PORT || 3002;

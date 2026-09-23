@@ -14,7 +14,9 @@
     "make-code": "node server/scripts/make-code.js",
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
-    "start:all": "concurrently -k -n server,client -c blue,green \"npm.cmd run dev --workspace=server\" \"npm.cmd run dev --workspace=client\""
+    "start:all": "concurrently -k -n server,client -c blue,green \"npm.cmd run dev --workspace=server\" \"npm.cmd run dev --workspace=client\"",
+    "verify:public-version": "node work-verify-public-version.js",
+    "verify:public-full": "node work-verify-public-full.js"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
