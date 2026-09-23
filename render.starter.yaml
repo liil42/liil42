@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: daimaxuexi-backend
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm run start --workspace=server
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: APP_DATA_FILE
+        value: /data/app.json
+      - key: LEARNING_DB_PATH
+        value: /data/learning.db
+      - key: CORS_ORIGINS
+        value: https://liil42.github.io,http://localhost:5173,http://127.0.0.1:5173
+    disk:
+      name: daimaxuexi-data
+      mountPath: /data
+      sizeGB: 1
