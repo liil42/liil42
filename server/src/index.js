@@ -819,27 +819,36 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
     }
     assertQuota(req);
     const keyRecord = requireApiKey(req);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
-    let response;
-    try {
-      response = await fetch(inputUrl, {
-        redirect: 'follow',
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
-      });
-    } finally {
-      clearTimeout(timer);
+    const pasted = String(req.body?.pageText || '').trim();
+    let raw = pasted;
+    let contentType = pasted ? 'text/plain' : '';
+    if (!pasted) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      try {
+        const response = await fetch(inputUrl, {
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
+        });
+        if (response.ok) {
+          contentType = response.headers.get('content-type') || '';
+          raw = await response.text();
+        }
+      } catch (error) {
+        raw = '';
+      } finally {
+        clearTimeout(timer);
+      }
     }
-    if (!response.ok) {
-      return fail(res, 502, `${u([0x65E0,0x6CD5,0x6253,0x5F00,0x8FD9,0x4E2A,0x7F51,0x9875,0xFF0C,0x670D,0x52A1,0x8FD4,0x56DE,0x4E86])} ${response.status}${u([0xFF0C,0x8BF7,0x68C0,0x67E5,0x5730,0x5740,0x662F,0x5426,0x53EF,0x516C,0x5F00,0x8BBF,0x95EE])}`, 'PAGE_FETCH_FAILED');
+    if (!raw.trim()) {
+      const msg = String.fromCodePoint(0x670D,0x52A1,0x5668,0x6682,0x65F6,0x65E0,0x6CD5,0x8BFB,0x53D6,0x8FD9,0x4E2A,0x7F51,0x9875,0xFF0C,0x8BF7,0x628A,0x7F51,0x9875,0x91CC,0x770B,0x5F97,0x5230,0x7684,0x6587,0x5B57,0x590D,0x5236,0x5230,0x4E0B,0x9762,0x7684,0x201C,0x7F51,0x9875,0x6587,0x5B57,0x201D,0x91CC,0x518D,0x5206,0x6790,0x3002);
+      return fail(res, 422, msg, 'PAGE_TEXT_REQUIRED');
     }
-    const contentType = response.headers.get('content-type') || '';
-    const raw = await response.text();
+    const pageInfo = extractPageInfo(inputUrl, raw, contentType);
     if (/image\//i.test(contentType)) {
       return fail(res, 400, '这个地址不是网页，请换一个普通网页地址', 'NOT_A_WEBPAGE');
     }
-    const pageInfo = extractPageInfo(inputUrl, raw, contentType);
     const report = await analyzeUrl(keyRecord, inputUrl, pageInfo);
     const analysisRunId = recordRun(req.user.id, 'url', pageInfo.title || inputUrl, report);
     const session = learningStore.createSession({
