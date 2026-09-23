@@ -57,6 +57,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
   const [pasteCode, setPasteCode] = useState('');
   const [pasteLanguage, setPasteLanguage] = useState('');
   const [pageUrl, setPageUrl] = useState('');
+  const [pageText, setPageText] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [errorLog, setErrorLog] = useState('');
   const [localFiles, setLocalFiles] = useState([]);
@@ -271,7 +272,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
     try {
       const data = await api('/api/analyze/url', {
         method: 'POST',
-        body: JSON.stringify({ url: pageUrl })
+        body: JSON.stringify({ url: pageUrl, pageText })
       });
       setResult({
         kind: 'report',
@@ -472,7 +473,8 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
                 placeholder="https://example.com"
               />
             </label>
-            <p className="muted">我会读取这个网页的公开内容，分析页面做什么、有哪些功能、流程怎么走，并给出优化建议和创新点。</p>
+            <p className="muted">先尝试自动读取。如果服务器读不到这个网页，请把网页里能看到的主要文字粘在下面，一样可以分析。</p>
+            <textarea className="code-textarea" rows={5} value={pageText} onChange={(event) => setPageText(event.target.value)} placeholder="选填：网页的标题、正文、功能菜单、操作流程文字" />
             <button className="btn btn-primary" onClick={handleUrl} disabled={loading}>
               {loading ? <Loader2 size={16} className="spin" /> : <Globe size={16} />}
               分析这个网页
