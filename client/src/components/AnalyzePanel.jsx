@@ -482,13 +482,13 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
 
         {mode === 'error' && (
           <div className="stack">
-            <p className="muted">先把报错内容粘贴到下面。相关代码可以不填；如果一起粘贴，分析会更准确。</p>
+            <p className="muted">不用整理格式，直接把浏览器或终端里的整段报错原样粘贴到下面即可。相关代码可以不填；如果一起粘贴，分析会更准确。</p>
             <textarea
               className="code-textarea log"
               rows={10}
               value={errorLog}
               onChange={(event) => setErrorLog(event.target.value)}
-              placeholder="粘贴报错内容，例如：Cannot read properties of undefined"
+              placeholder="直接粘贴完整报错，例如：Cannot read properties of undefined..."
             />
             <textarea
               className="code-textarea"
