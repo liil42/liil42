@@ -111,8 +111,8 @@ function createMembershipCodes(count = 1) {
 
 function redeemMembership(userId, code) {
   const row = sqlite.prepare('SELECT * FROM membership_codes WHERE code = ?').get(code);
-  if (!row) return { ok: false, message: '??????' };
-  if (row.used_by) return { ok: false, message: '???????' };
+  if (!row) return { ok: false, message: '激活码不存在' };
+  if (row.used_by) return { ok: false, message: '激活码已经使用过了' };
   const now = new Date().toISOString();
   sqlite.prepare('UPDATE membership_codes SET used_by = ?, used_at = ? WHERE code = ?').run(userId, now, code);
   sqlite.prepare('UPDATE users SET is_member = 1 WHERE id = ?').run(userId);

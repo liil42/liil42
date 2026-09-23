@@ -271,6 +271,18 @@ textarea {
   color: var(--danger);
 }
 
+.alert-hint {
+  margin: -4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-left: 3px solid #38bdf8;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  color: #7dd3fc;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .alert-success {
   margin: 12px 0;
   padding: 10px 12px;

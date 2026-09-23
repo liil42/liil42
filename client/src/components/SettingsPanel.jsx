@@ -16,6 +16,7 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
   const [model, setModel] = useState(user.model || DEFAULT_MODELS[user.provider || 'deepseek'] || '');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [hint, setHint] = useState('');
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [learningMode, setLearningMode] = useState(
@@ -50,9 +51,30 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
     }
   }
 
+  function connectionHint(message) {
+    const text = String(message || '');
+    if (text.includes('API Key 不能用')) {
+      return '请回到服务商后台，点击 Key 旁边的复制按钮重新复制；粘贴到输入框后，点一下输入框末尾按一次 Delete，去掉可能多出来的空格。';
+    }
+    if (text.includes('余额不足')) {
+      return '请先到服务商后台充值，到账后再点一次测试连接。';
+    }
+    if (text.includes('模型名不可用')) {
+      return '请把模型名称改成 deepseek-chat 再试。';
+    }
+    if (text.includes('无法连接 AI 服务')) {
+      return '这是网络问题，不是 Key 的问题，请稍后再试一次。';
+    }
+    if (text.includes('超过 60 秒')) {
+      return '服务商响应较慢，请等几分钟后再点一次测试连接。';
+    }
+    return '请检查 API Key 是否复制完整、服务商是否选对、模型名称是否正确。';
+  }
+
   async function testConnection() {
     setError('');
     setMessage('');
+    setHint('');
     setTesting(true);
     try {
       const data = await api('/api/settings/test-connection', {
@@ -62,6 +84,7 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
       setMessage(data.message || '连接成功');
     } catch (err) {
       setError(err.message);
+      setHint(connectionHint(err.message));
     } finally {
       setTesting(false);
     }
@@ -248,6 +271,7 @@ export default function SettingsPanel({ user, setUser, onLogout, onOpenTutorial 
 
       {message && <div className="alert-success">{message}</div>}
       {error && <div className="alert-error">{error}</div>}
+      {hint && <div className="alert-hint">{hint}</div>}
     </div>
   );
 }
