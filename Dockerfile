@@ -1,4 +1,5 @@
 FROM node:22-bookworm-slim
+ARG CACHEBUST=1
 
 WORKDIR /app
 
