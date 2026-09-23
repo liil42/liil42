@@ -818,7 +818,6 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
       return fail(res, 400, '目前只支持 http 或 https 网页地址', 'INVALID_URL_PROTOCOL');
     }
     assertQuota(req);
-    const keyRecord = requireApiKey(req);
     const pasted = String(req.body?.pageText || '').trim();
     let raw = pasted;
     let contentType = pasted ? 'text/plain' : '';
@@ -842,10 +841,12 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
       }
     }
     if (!raw.trim()) {
-      const msg = String.fromCodePoint(0x670D,0x52A1,0x5668,0x6682,0x65F6,0x65E0,0x6CD5,0x8BFB,0x53D6,0x8FD9,0x4E2A,0x7F51,0x9875,0xFF0C,0x8BF7,0x628A,0x7F51,0x9875,0x91CC,0x770B,0x5F97,0x5230,0x7684,0x6587,0x5B57,0x590D,0x5236,0x5230,0x4E0B,0x9762,0x7684,0x201C,0x7F51,0x9875,0x6587,0x5B57,0x201D,0x91CC,0x518D,0x5206,0x6790,0x3002);
-      return fail(res, 422, msg, 'PAGE_TEXT_REQUIRED');
+      raw = `网页地址：${inputUrl}
+服务暂时无法自动读取页面内容。请根据这个网址分析页面通常有什么功能、用户会怎么操作、适合小白理解的重点、可能的问题和优化建议。`;
+      contentType = 'text/plain';
     }
     const pageInfo = extractPageInfo(inputUrl, raw, contentType);
+    const keyRecord = requireApiKey(req);
     if (/image\//i.test(contentType)) {
       return fail(res, 400, '这个地址不是网页，请换一个普通网页地址', 'NOT_A_WEBPAGE');
     }
@@ -919,6 +920,10 @@ app.post('/api/analyze/annotate', requireAuth, async (req, res, next) => {
 });
 
 // API 未匹配的路由统一返回 404 JSON，避免被前端静态页兜底吞掉
+app.get('/api/build-version', (req, res) => {
+  res.json({ version: 'fallback-20260923', file: 'server/src/index.js' });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', time: new Date().toISOString() });
 });
