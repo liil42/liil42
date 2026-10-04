@@ -8,3 +8,24 @@ client/dist/
 coverage/
 .env.local
 .env.*.local
+
+# 本地临时产物与备份（不推送）
+.runlogs/
+.workbuddy/
+backups/
+docs-backup-*/
+migration/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.exe
+step-*.png
+tmp-*.txt
+tmp-*.js
+tmp-*.json
+work-*.js
+work-*.err.log
+work-*.out.log
+*测试报告.md

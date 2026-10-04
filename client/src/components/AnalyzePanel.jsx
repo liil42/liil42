@@ -62,6 +62,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
   const [errorLog, setErrorLog] = useState('');
   const [localFiles, setLocalFiles] = useState([]);
   const [localHandles, setLocalHandles] = useState([]);
+  const [notice, setNotice] = useState('');
   const [selectedPath, setSelectedPath] = useState('');
   const [annotate, setAnnotate] = useState(null);
 
@@ -191,7 +192,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
         for await (const entry of current.values()) {
           const path = prefix ? `${prefix}/${entry.name}` : entry.name;
           if (entry.kind === 'file' && isTextFile(path)) {
-            handles.push({ path, handle: entry });
+            handles.push({ path, handle: entry, parentHandle: current });
           } else if (entry.kind === 'directory') {
             await walk(entry, path);
           }
@@ -249,12 +250,23 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       setError('浏览器没有保留写入权限，请重新选择本地文件夹。');
       return;
     }
+    setNotice('');
     try {
+      const original = annotate.original || (await (await handle.getFile()).text());
+      const backupName = `${annotate.path.split('/').pop()}.bak`;
+      const backupHandle = await handle.parentHandle.getFileHandle(backupName, { create: true });
+      const existingBackup = await backupHandle.getFile();
+      if (existingBackup.size === 0) {
+        const backupWritable = await backupHandle.createWritable();
+        await backupWritable.write(original);
+        await backupWritable.close();
+      }
       const writable = await handle.createWritable();
       await writable.write(annotate.annotated);
       await writable.close();
       setAnnotate(null);
       setError('');
+      setNotice(`已写入 ${annotate.path}，原文件已备份为 ${backupName}`);
     } catch (err) {
       setError(err.message);
     }
@@ -508,6 +520,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
       </div>
 
       {error && <div className="alert-error">{error}</div>}
+      {notice && <div className="alert-success">{notice}</div>}
       {loading && <LoadingView text="正在调用模型分析" />}
 
       {result?.kind === 'report' && (
@@ -540,6 +553,7 @@ export default function AnalyzePanel({ user, setUser, onHistoryChanged, initialS
           data={snippet}
           user={user}
           onHistoryChanged={onHistoryChanged}
+          onClose={() => setSnippet(null)}
         />
       )}
     </div>

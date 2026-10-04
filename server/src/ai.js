@@ -22,7 +22,9 @@ function friendlyError(error) {
   }
   if (/429|rate limit|too many/i.test(raw)) return '请求太频繁了，请等一会儿再试';
   if (/50[0-9]|502|503|504/.test(raw)) return 'AI 服务暂时繁忙，请稍后再试';
-  if (/JSON|json/i.test(raw)) return 'AI 返回的内容不完整，已自动重试，请再点一次分析';
+  if (/不是有效 JSON|返回内容为空|Unexpected end|Unterminated|JSON\.parse/i.test(raw)) {
+    return 'AI 返回的内容不完整，已自动重试，请再点一次分析';
+  }
   if (/400/.test(raw)) return 'AI 拒绝了这次请求，请检查模型名和接口地址';
   return 'AI 调用失败，请稍后再试';
 }

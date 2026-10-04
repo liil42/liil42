@@ -36,7 +36,7 @@ function publicOrder(order) {
 
 function createPaymentService(store = paymentStore, env = process.env) {
   function assertMockPaymentEnabled() {
-    if (env.NODE_ENV === 'production' && env.ALLOW_MOCK_PAYMENT !== 'true') {
+    if (env.ALLOW_MOCK_PAYMENT !== 'true' || env.NODE_ENV === 'production') {
       throw serviceError('生产环境已禁用模拟支付', 403);
     }
   }

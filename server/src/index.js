@@ -24,9 +24,12 @@ const {
   getApiKeyRecord,
   todayRunCount,
   recordRun,
+  claimDailyQuota,
+  refundDailyQuota,
   listHistory,
   getHistoryItem,
   deleteHistoryItem,
+  clearUserData,
   deleteUserData
 } = require('./store');
 const { encrypt, maskKey } = require('./crypto');
@@ -81,22 +84,55 @@ function fail(res, status, message, code) {
 }
 
 function sign(user) {
-  return jwt.sign({ sub: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '30d' });
 }
+
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const SESSION_SECRETS = {
+  JWT_SECRET: process.env.JWT_SECRET,
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY
+};
+
+function assertSecuritySecrets(env = SESSION_SECRETS) {
+  for (const [name, value] of Object.entries(env)) {
+    if (typeof value !== 'string' || value.length < 32 || value.length > 512) {
+      console.error(`[启动失败] ${name} 未配置或长度不符合要求（需要 32 到 512 位随机字符串）`);
+      process.exit(1);
+    }
+    if (name === 'ENCRYPTION_KEY' && !/^[a-f0-9]{64}$/i.test(value)) {
+      console.error('[启动失败] ENCRYPTION_KEY 必须是 64 位十六进制字符串，与 crypto.js 解密规则保持一致');
+      process.exit(1);
+    }
+  }
+}
+
+assertSecuritySecrets();
 
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) return fail(res, 401, '请先登录', 'UNAUTHORIZED');
+  let payload;
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = getUserById(payload.sub);
-    if (!user) return fail(res, 401, '账号不存在', 'ACCOUNT_NOT_FOUND');
-    req.user = user;
-    return next();
+    payload = jwt.verify(token, JWT_SECRET);
   } catch (error) {
-    return fail(res, 401, '登录已过期，请重新登录', 'TOKEN_EXPIRED');
+    if (error && error.name === 'TokenExpiredError') {
+      return fail(res, 401, '登录已过期，请重新登录', 'TOKEN_EXPIRED');
+    }
+    if (error && error.name === 'JsonWebTokenError') {
+      return fail(res, 401, '登录凭证无效，请重新登录', 'TOKEN_INVALID');
+    }
+    return next(error);
   }
+  let user;
+  try {
+    user = getUserById(payload.sub);
+  } catch (error) {
+    return next(error);
+  }
+  if (!user) return fail(res, 401, '账号不存在', 'ACCOUNT_NOT_FOUND');
+  req.user = user;
+  return next();
 }
 
 function requireApiKey(req) {
@@ -111,12 +147,23 @@ function requireApiKey(req) {
 }
 
 function assertQuota(req) {
-  if (isUserMember(req.user.id)) return;
-  if (todayRunCount(req.user.id) >= 3) {
+  if (isUserMember(req.user.id)) return { allowed: true, used: 0, reserved: false };
+  const claim = claimDailyQuota(req.user.id, 3);
+  if (!claim.allowed) {
     const error = new Error('今日体验次数已用完，请明天再试');
     error.status = 429;
     error.code = 'QUOTA_EXCEEDED';
     throw error;
+  }
+  return { ...claim, reserved: true };
+}
+
+function releaseQuota(req, claim) {
+  if (!claim || !claim.reserved || isUserMember(req.user.id)) return;
+  try {
+    refundDailyQuota(req.user.id);
+  } catch (error) {
+    console.error('[配额回退失败] ' + String((error && error.message) || error));
   }
 }
 
@@ -191,7 +238,17 @@ app.post('/api/settings/apikey', requireAuth, (req, res, next) => {
   }
 });
 
-app.post('/api/settings/test-connection', requireAuth, async (req, res) => {
+app.post('/api/settings/test-connection', requireAuth, (req, res, next) => {
+  let quotaClaim;
+  try {
+    quotaClaim = assertQuota(req);
+  } catch (error) {
+    return next(error);
+  }
+  return runConnectionTest(req, res, next, quotaClaim);
+});
+
+async function runConnectionTest(req, res, next, quotaClaim) {
   try {
     const payload = req.body || {};
     const saved = getApiKeyRecord(req.user.id, { allowInvalid: true });
@@ -222,6 +279,7 @@ app.post('/api/settings/test-connection', requireAuth, async (req, res) => {
       reply: String(content || '').slice(0, 80)
     });
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     const reason = friendlyError(error);
     console.error('[测试连接失败] ' + reason + ' | 原始错误: ' + String((error && error.message) || error));
     return res.status(400).json({
@@ -230,14 +288,19 @@ app.post('/api/settings/test-connection', requireAuth, async (req, res) => {
       message: reason
     });
   }
-});
+}
+
 app.delete('/api/me/data', requireAuth, (req, res, next) => {
   try {
-    deleteUserData(req.user.id);
-    learningStore.deleteUserData(req.user.id);
-    res.json({ ok: true });
+    const password = String(req.body?.password || '');
+    if (!password) return fail(res, 400, '请输入当前密码确认清空数据');
+    if (!verifyPassword(req.user, password)) {
+      return fail(res, 401, '密码错误，数据未清空');
+    }
+    clearUserData(req.user.id);
+    return res.json({ ok: true, message: '学习数据已清空，账号和 API Key 保留' });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -248,7 +311,6 @@ app.delete('/api/me/account', requireAuth, (req, res, next) => {
     if (!verifyPassword(req.user, password)) {
       return fail(res, 401, '密码错误，账号未注销');
     }
-    learningStore.deleteUserData(req.user.id);
     deleteUserData(req.user.id);
     return res.json({ ok: true, message: '账号已注销，用户名可以重新注册' });
   } catch (error) {
@@ -288,12 +350,13 @@ app.delete('/api/history/:id', requireAuth, (req, res) => {
 });
 
 app.post('/api/analyze/snippet', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const { code, language, style } = req.body || {};
     if (!code || String(code).length > 200000) {
       return fail(res, 400, '代码不能为空且不能超过 200KB');
     }
-    assertQuota(req);
+    quotaClaim = assertQuota(req);
     const keyRecord = requireApiKey(req);
     const result = await analyzeSnippet(keyRecord, String(code), language || '', style || '');
     const analysisRunId = recordRun(req.user.id, 'snippet', language || '代码片段', JSON.stringify(result));
@@ -308,6 +371,7 @@ app.post('/api/analyze/snippet', requireAuth, async (req, res, next) => {
     });
     return res.json({ ...result, learning_session_id: session.id });
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     return next(error);
   }
 });
@@ -393,6 +457,16 @@ app.delete('/api/learning/categories/:id', requireAuth, (req, res, next) => {
   try {
     const deleted = learningStore.deleteCategory(req.user.id, req.params.id);
     if (!deleted) return fail(res, 404, '分类不存在');
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.delete('/api/learning/sessions/:id', requireAuth, (req, res, next) => {
+  try {
+    const deleted = learningStore.deleteSession(req.user.id, req.params.id);
+    if (!deleted) return fail(res, 404, '学习记录不存在或不属于当前账号', 'SESSION_NOT_FOUND');
     return res.json({ ok: true });
   } catch (error) {
     return next(error);
@@ -687,6 +761,7 @@ app.get('/api/learning/sessions/:id/practice', requireAuth, (req, res, next) => 
 });
 
 app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const files = Array.isArray(req.body?.files) ? req.body.files : [];
     const focus = String(req.body?.focus || '');
@@ -702,7 +777,7 @@ app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
       path: String(file.path || '未命名文件'),
       content: String(file.content || '')
     }));
-    assertQuota(req);
+    quotaClaim = assertQuota(req);
     const keyRecord = requireApiKey(req);
     const report = await analyzeProject(keyRecord, normalized, focus);
     const title = String(req.body?.title || normalized[0].path || '项目');
@@ -723,18 +798,20 @@ app.post('/api/analyze/project', requireAuth, async (req, res, next) => {
       learning_session_id: session.id
     });
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     return next(error);
   }
 });
 
 app.post('/api/analyze/error', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const code = String(req.body?.code || '');
     const log = String(req.body?.log || '');
     if (!log.trim()) {
       return fail(res, 400, '请先把报错内容粘贴进来；如果能补充相关代码，分析会更准。', 'ERROR_LOG_REQUIRED');
     }
-    assertQuota(req);
+    quotaClaim = assertQuota(req);
     const keyRecord = requireApiKey(req);
     const report = await analyzeError(keyRecord, code, log);
     const analysisRunId = recordRun(req.user.id, 'error', '报错日志', report);
@@ -749,6 +826,7 @@ app.post('/api/analyze/error', requireAuth, async (req, res, next) => {
     });
     return res.json({ report, learning_session_id: session.id });
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     return next(error);
   }
 });
@@ -771,6 +849,66 @@ function stripHtml(value) {
     .replace(/<[^>]+>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const PRIVATE_IPV4_PATTERN = /^(?:0\.|10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|198\.18\.|198\.19\.)/;
+
+function isPrivateHostname(hostname) {
+  const host = String(hostname || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (host.includes(':')) return host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80');
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+  return PRIVATE_IPV4_PATTERN.test(`${parts.join('.')}.`);
+}
+
+async function assertPublicUrl(parsed) {
+  let address;
+  try {
+    const { lookup } = require('node:dns/promises');
+    address = await lookup(parsed.hostname);
+  } catch (error) {
+    return false;
+  }
+  return !isPrivateHostname(address && address.address);
+}
+
+const MAX_REDIRECTS = 4;
+
+function resolveRedirect(currentUrl, location) {
+  try {
+    return new URL(String(location || '').trim(), currentUrl);
+  } catch (error) {
+    return null;
+  }
+}
+
+async function fetchPageSafely(startUrl, signal) {
+  let current = new URL(startUrl);
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    if (!['http:', 'https:'].includes(current.protocol)) return null;
+    if (isPrivateHostname(current.hostname)) return null;
+    if (!(await assertPublicUrl(current))) return null;
+    const response = await fetch(current.href, {
+      redirect: 'manual',
+      signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const next = resolveRedirect(current.href, response.headers.get('location'));
+      if (!next) return null;
+      current = next;
+      continue;
+    }
+    if (!response.ok) return null;
+    return {
+      contentType: response.headers.get('content-type') || '',
+      body: await response.text()
+    };
+  }
+  return null;
 }
 
 function extractPageInfo(url, rawHtml, contentType) {
@@ -806,6 +944,7 @@ function extractPageInfo(url, rawHtml, contentType) {
 }
 
 app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const inputUrl = String(req.body?.url || '').trim();
     let parsed;
@@ -817,7 +956,13 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
     if (!['http:', 'https:'].includes(parsed.protocol)) {
       return fail(res, 400, '目前只支持 http 或 https 网页地址', 'INVALID_URL_PROTOCOL');
     }
-    assertQuota(req);
+    if (isPrivateHostname(parsed.hostname)) {
+      return fail(res, 403, '不能分析内网或本机地址', 'URL_NOT_PUBLIC');
+    }
+    if (!(await assertPublicUrl(parsed))) {
+      return fail(res, 403, '该地址解析到内网或本机，已拒绝访问', 'URL_NOT_PUBLIC');
+    }
+    quotaClaim = assertQuota(req);
     const pasted = String(req.body?.pageText || '').trim();
     let raw = pasted;
     let contentType = pasted ? 'text/plain' : '';
@@ -825,14 +970,10 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 25000);
       try {
-        const response = await fetch(inputUrl, {
-          redirect: 'follow',
-          signal: controller.signal,
-          headers: { 'User-Agent': 'Mozilla/5.0 code-mentor-web' }
-        });
-        if (response.ok) {
-          contentType = response.headers.get('content-type') || '';
-          raw = await response.text();
+        const page = await fetchPageSafely(inputUrl, controller.signal);
+        if (page) {
+          contentType = page.contentType;
+          raw = page.body;
         }
       } catch (error) {
         raw = '';
@@ -848,6 +989,7 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
     const pageInfo = extractPageInfo(inputUrl, raw, contentType);
     const keyRecord = requireApiKey(req);
     if (/image\//i.test(contentType)) {
+      releaseQuota(req, quotaClaim);
       return fail(res, 400, '这个地址不是网页，请换一个普通网页地址', 'NOT_A_WEBPAGE');
     }
     const report = await analyzeUrl(keyRecord, inputUrl, pageInfo);
@@ -861,8 +1003,10 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
       code: [pageInfo.title, pageInfo.description, pageInfo.bodyText].filter(Boolean).join('\n\n'),
       analysis: { kind: 'report', report, pageInfo: { title: pageInfo.title, description: pageInfo.description, url: inputUrl } }
     });
+    quotaClaim = null;
     return res.json({ report, contentType, learning_session_id: session.id, pageTitle: pageInfo.title });
   } catch (error) {
+    if (quotaClaim) releaseQuota(req, quotaClaim);
     if (error && error.name === 'AbortError') {
       return fail(res, 504, '打开网页超时了，请稍后重试或换一个地址', 'PAGE_TIMEOUT');
     }
@@ -871,10 +1015,11 @@ app.post('/api/analyze/url', requireAuth, async (req, res, next) => {
 });
 
 app.post('/api/analyze/github', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const inputUrl = String(req.body?.url || '').trim();
     if (!inputUrl) return fail(res, 400, '请输入 GitHub 地址');
-    assertQuota(req);
+    quotaClaim = assertQuota(req);
     const keyRecord = requireApiKey(req);
     const githubData = await fetchGitHubProject(inputUrl);
 
@@ -899,22 +1044,25 @@ app.post('/api/analyze/github', requireAuth, async (req, res, next) => {
       totalLines: totalLines(githubData.files)
     });
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     return next(error);
   }
 });
 
 app.post('/api/analyze/annotate', requireAuth, async (req, res, next) => {
+  let quotaClaim;
   try {
     const { code, language, filename } = req.body || {};
     if (!code || String(code).length > 500000) {
       return fail(res, 400, '代码不能为空且不能超过 500KB');
     }
-    assertQuota(req);
+    quotaClaim = assertQuota(req);
     const keyRecord = requireApiKey(req);
     const result = await annotateCode(keyRecord, String(code), language || '');
     recordRun(req.user.id, 'annotate', filename || '代码注释版', JSON.stringify(result));
     return res.json(result);
   } catch (error) {
+    releaseQuota(req, quotaClaim);
     return next(error);
   }
 });

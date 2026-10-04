@@ -19,6 +19,16 @@ function parseJson(value, fallback = null) {
   }
 }
 
+function assertChanges(result, message = '操作未生效') {
+  if (!result || !result.changes) {
+    const error = new Error(message);
+    error.status = 409;
+    error.code = 'WRITE_NO_EFFECT';
+    throw error;
+  }
+  return result;
+}
+
 function initializeSchema(db) {
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -314,7 +324,15 @@ function mapMistake(row) {
 
 function createLearningStore(databasePath = defaultDatabasePath) {
   ensureDatabaseDirectory(databasePath);
-  const db = new DatabaseSync(databasePath);
+  const sharedConnection = (() => {
+    if (databasePath !== defaultDatabasePath) return null;
+    try {
+      return require('./db').connection;
+    } catch (error) {
+      return null;
+    }
+  })();
+  const db = sharedConnection || new DatabaseSync(databasePath);
   initializeSchema(db);
 
   function createSession({ userId, analysisRunId, sourceType, fileName, language, code, analysis, categoryId }) {
@@ -426,11 +444,12 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     `).get(id, userId);
     if (!existing) return null;
     const now = new Date().toISOString();
-    db.prepare(`
+    const updatedCategory = db.prepare(`
       UPDATE learning_categories
       SET name = ?, color = ?, updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(name || existing.name, color || existing.color, now, id, userId);
+    assertChanges(updatedCategory, '分类更新未生效');
     return mapCategory(db.prepare('SELECT * FROM learning_categories WHERE id = ?').get(id));
   }
 
@@ -445,19 +464,20 @@ function createLearningStore(databasePath = defaultDatabasePath) {
         return false;
       }
 
-      db.prepare(`
+      const clearedSessions = db.prepare(`
         UPDATE learning_sessions
         SET category_id = NULL, updated_at = ?
         WHERE category_id = ? AND user_id = ?
       `).run(new Date().toISOString(), id, userId);
-      db.prepare(`
+      const clearedMistakes = db.prepare(`
         UPDATE mistake_items
         SET category_id = NULL, updated_at = ?
         WHERE category_id = ? AND user_id = ?
       `).run(new Date().toISOString(), id, userId);
-      db.prepare(`
+      const deletedCategory = db.prepare(`
         DELETE FROM learning_categories WHERE id = ? AND user_id = ?
       `).run(id, userId);
+      assertChanges(deletedCategory, '分类删除未生效');
       db.exec('COMMIT');
       return true;
     } catch (error) {
@@ -496,6 +516,17 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     `).get(sessionId, userId) || null;
   }
 
+  function assertSessionOwner(userId, sessionId) {
+    const session = getSessionForLearning(userId, sessionId);
+    if (!session) {
+      const error = new Error('学习记录不存在或不属于当前账号');
+      error.status = 404;
+      error.code = 'SESSION_NOT_FOUND';
+      throw error;
+    }
+    return session;
+  }
+
   function getInsight(userId, sessionId, lineNumber) {
     return mapInsight(db.prepare(`
       SELECT * FROM line_insights
@@ -504,14 +535,16 @@ function createLearningStore(databasePath = defaultDatabasePath) {
   }
 
   function upsertInsight({ userId, sessionId, lineNumber, lineText, insight }) {
+    assertSessionOwner(userId, sessionId);
     const now = new Date().toISOString();
     const existing = getInsight(userId, sessionId, lineNumber);
     if (existing) {
-      db.prepare(`
+      const updatedInsight = db.prepare(`
         UPDATE line_insights
         SET line_text = ?, insight_json = ?, updated_at = ?
         WHERE id = ? AND user_id = ?
       `).run(lineText, JSON.stringify(insight || {}), now, existing.id, userId);
+      assertChanges(updatedInsight, '代码行解析更新未生效');
       return getInsight(userId, sessionId, lineNumber);
     }
 
@@ -526,6 +559,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
   }
 
   function addQuestion({ userId, sessionId, insightId, lineNumber, question, answer }) {
+    assertSessionOwner(userId, sessionId);
     const id = randomUUID();
     const now = new Date().toISOString();
     db.prepare(`
@@ -547,11 +581,12 @@ function createLearningStore(databasePath = defaultDatabasePath) {
   }
 
   function addUnderstanding({ userId, sessionId, lineNumber, content, feedback, status }) {
+    assertSessionOwner(userId, sessionId);
     const version = db.prepare(`
       SELECT COALESCE(MAX(version), 0) + 1 AS next_version
       FROM understanding_records
-      WHERE session_id = ? AND line_number = ?
-    `).get(sessionId, lineNumber).next_version;
+      WHERE session_id = ? AND user_id = ? AND line_number = ?
+    `).get(sessionId, userId, lineNumber).next_version;
     const id = randomUUID();
     const now = new Date().toISOString();
     db.prepare(`
@@ -574,6 +609,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
   }
 
   function addPractice({ userId, sessionId, lineNumber, practiceType, userAnswer, feedback, result }) {
+    assertSessionOwner(userId, sessionId);
     const id = randomUUID();
     const now = new Date().toISOString();
     db.prepare(`
@@ -615,8 +651,20 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     question,
     note
   }) {
+    assertSessionOwner(userId, sessionId);
     const id = randomUUID();
     const now = new Date().toISOString();
+    if (categoryId) {
+      const category = db.prepare(`
+        SELECT id FROM learning_categories WHERE id = ? AND user_id = ?
+      `).get(categoryId, userId);
+      if (!category) {
+        const error = new Error('分类不存在或不属于当前账号');
+        error.status = 404;
+        error.code = 'CATEGORY_NOT_FOUND';
+        throw error;
+      }
+    }
     db.prepare(`
       INSERT INTO mistake_items (
         id, user_id, session_id, category_id, item_type, start_line, end_line,
@@ -684,7 +732,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
       : existing.status;
     const now = new Date().toISOString();
     const resolvedAt = status === 'resolved' ? (existing.resolved_at || now) : null;
-    db.prepare(`
+    const updatedMistake = db.prepare(`
       UPDATE mistake_items
       SET category_id = ?, title = ?, question = ?, note = ?, status = ?,
           review_count = ?, resolved_at = ?, updated_at = ?
@@ -701,6 +749,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
       id,
       userId
     );
+    assertChanges(updatedMistake, '错题更新未生效');
     return mapMistake(db.prepare('SELECT * FROM mistake_items WHERE id = ?').get(id));
   }
 
@@ -719,7 +768,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     const mastered = correctStreak >= 4;
     const nextReviewAt = mastered ? null : scheduleNextReview(correctStreak);
     const status = mastered ? 'resolved' : 'reviewing';
-    db.prepare(`
+    const updatedResult = db.prepare(`
       UPDATE mistake_items
       SET status = ?, review_count = review_count + 1,
           correct_streak = ?, wrong_streak = ?,
@@ -731,6 +780,7 @@ function createLearningStore(databasePath = defaultDatabasePath) {
       status, correctStreak, wrongStreak, now, nextReviewAt,
       status, now, now, id, userId
     );
+    assertChanges(updatedResult, '错题复习结果更新未生效');
     return mapMistake(db.prepare('SELECT * FROM mistake_items WHERE id = ?').get(id));
   }
 
@@ -760,34 +810,105 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     `).get(id, userId);
     if (!existing) return null;
     const now = new Date().toISOString();
-    db.prepare(`
+    const result = db.prepare(`
       UPDATE mistake_items
-      SET status = CASE WHEN status = 'resolved' THEN 'reviewing' ELSE 'reviewing' END,
+      SET status = 'reviewing',
           review_count = review_count + 1,
           resolved_at = NULL,
           updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(now, id, userId);
+    assertChanges(result, '错题状态更新未生效');
     return mapMistake(db.prepare('SELECT * FROM mistake_items WHERE id = ?').get(id));
   }
 
   function deleteMistake(userId, id) {
-    return db.prepare(`
+    const result = db.prepare(`
       DELETE FROM mistake_items WHERE id = ? AND user_id = ?
-    `).run(id, userId).changes > 0;
+    `).run(id, userId);
+    if (result.changes === 0) {
+      const error = new Error('错题不存在或已被删除');
+      error.status = 404;
+      error.code = 'MISTAKE_NOT_FOUND';
+      throw error;
+    }
+    return true;
   }
 
-  function deleteUserData(userId) {
+  function clearUserData(userId, options = {}) {
+    const runDeletes = () => {
+      const tables = [
+        'mistake_items',
+        'line_insights',
+        'line_questions',
+        'understanding_records',
+        'practice_records',
+        'learning_sessions',
+        'learning_categories'
+      ];
+      const removed = {};
+      for (const table of tables) {
+        // 空数据属于合法业务场景：changes 为 0 只记录数量；但语句未返回结果属异常，需要抛错
+        const result = db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+        if (!result || result.changes === undefined) {
+          assertChanges(result, `清空 ${table} 未返回执行结果`);
+        }
+        removed[table] = Number(result.changes) || 0;
+      }
+      return removed;
+    };
+    if (options.skipTransaction) {
+      runDeletes();
+      return;
+    }
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.prepare('DELETE FROM mistake_items WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM learning_sessions WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM learning_categories WHERE user_id = ?').run(userId);
+      runDeletes();
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  function deleteSession(userId, sessionId) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = db.prepare(`
+        SELECT id FROM learning_sessions WHERE id = ? AND user_id = ?
+      `).get(sessionId, userId);
+      if (!existing) {
+        db.exec('ROLLBACK');
+        return false;
+      }
+      const tables = [
+        'line_insights',
+        'line_questions',
+        'understanding_records',
+        'practice_records',
+        'mistake_items'
+      ];
+      for (const table of tables) {
+        // 空数据属于合法业务场景：changes 为 0 只记录数量；但语句未返回结果属异常，需要抛错
+        const result = db.prepare(`DELETE FROM ${table} WHERE session_id = ? AND user_id = ?`).run(sessionId, userId);
+        if (!result || result.changes === undefined) {
+          assertChanges(result, `删除 ${table} 未返回执行结果`);
+        }
+      }
+      const deletedSession = db.prepare(`
+        DELETE FROM learning_sessions WHERE id = ? AND user_id = ?
+      `).run(sessionId, userId);
+      assertChanges(deletedSession, '学习记录删除未生效');
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  function deleteUserData(userId) {
+    clearUserData(userId);
   }
 
   function close() {
@@ -819,7 +940,9 @@ function createLearningStore(databasePath = defaultDatabasePath) {
     listDueMistakes,
     countDueMistakes,
     deleteMistake,
+    clearUserData,
     deleteUserData,
+    deleteSession,
     close
   };
 }

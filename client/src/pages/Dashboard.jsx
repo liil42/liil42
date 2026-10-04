@@ -74,9 +74,6 @@ export default function Dashboard({ user, setUser, onLogout, onOpenTutorial }) {
         </div>
         <div className="topbar-user">
           <span>{user.username}</span>
-          <span className={`member-badge ${user.isMember ? 'member' : ''}`}>
-            {`今日 ${user.todayUsed}/3`}
-          </span>
           <button
             className="theme-toggle"
             title={theme === 'dark' ? '切换到浅色' : '切换到深色'}

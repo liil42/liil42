@@ -107,6 +107,9 @@ const api = {
   save() {
     // SQLite writes are immediate; no full-file rewrite needed.
   },
+  get connection() {
+    return db;
+  },
   sqlite: db
 };
 

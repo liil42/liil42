@@ -180,9 +180,11 @@ function urlMessages(url, pageInfo) {
 
 URL：${url}
 Content-Type：${pageInfo.contentType}
+标题：${pageInfo.title || '（未解析到）'}
+页面描述：${pageInfo.description || '（未解析到）'}
 
 HTML/CSS/JS 摘要：
-${pageInfo.content}
+${pageInfo.bodyText || pageInfo.html || '（未读取到页面内容）'}
 
 要求：
 1. 分析 DOM 结构、Flex/Grid 布局、响应式设计、脚本加载顺序。

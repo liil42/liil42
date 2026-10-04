@@ -73,7 +73,7 @@ function decryptStoredKey(encryptedKey) {
   try {
     return { key: decrypt(encryptedKey), invalid: false, error: null };
   } catch (error) {
-    return { key: '', invalid: true, error };
+    return { key: '', invalid: true, error, errorMessage: String((error && error.message) || error) };
   }
 }
 
@@ -92,7 +92,8 @@ function getApiKeyRecord(userId, options = {}) {
     key: decoded.key,
     baseUrl: row.base_url,
     model: row.model,
-    invalid: decoded.invalid
+    invalid: decoded.invalid,
+    errorMessage: decoded.errorMessage || ''
   };
 }
 
@@ -110,18 +111,76 @@ function createMembershipCodes(count = 1) {
 }
 
 function redeemMembership(userId, code) {
-  const row = sqlite.prepare('SELECT * FROM membership_codes WHERE code = ?').get(code);
-  if (!row) return { ok: false, message: '激活码不存在' };
-  if (row.used_by) return { ok: false, message: '激活码已经使用过了' };
-  const now = new Date().toISOString();
-  sqlite.prepare('UPDATE membership_codes SET used_by = ?, used_at = ? WHERE code = ?').run(userId, now, code);
-  sqlite.prepare('UPDATE users SET is_member = 1 WHERE id = ?').run(userId);
-  return { ok: true, user: getUserById(userId) };
+  sqlite.exec('BEGIN IMMEDIATE');
+  try {
+    const row = sqlite.prepare('SELECT * FROM membership_codes WHERE code = ?').get(code);
+    if (!row) {
+      sqlite.exec('ROLLBACK');
+      return { ok: false, message: '激活码不存在' };
+    }
+    if (row.used_by) {
+      sqlite.exec('ROLLBACK');
+      return { ok: false, message: '激活码已经使用过了' };
+    }
+    const now = new Date().toISOString();
+    sqlite.prepare('UPDATE membership_codes SET used_by = ?, used_at = ? WHERE code = ?').run(userId, now, code);
+    sqlite.prepare('UPDATE users SET is_member = 1 WHERE id = ?').run(userId);
+    sqlite.exec('COMMIT');
+    return { ok: true, user: getUserById(userId) };
+  } catch (error) {
+    sqlite.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 function todayRunCount(userId) {
-  const row = sqlite.prepare(`SELECT COUNT(*) AS total FROM analysis_runs WHERE user_id = ? AND substr(created_at, 1, 10) = ?`).get(userId, localDateKey());
+  const row = sqlite.prepare(`SELECT COUNT(*) AS total FROM analysis_runs WHERE user_id = ? AND source_type != 'quota_placeholder' AND substr(created_at, 1, 10) = ?`).get(userId, localDateKey());
   return row ? row.total : 0;
+}
+
+function claimDailyQuota(userId, limit = 3) {
+  sqlite.exec('BEGIN IMMEDIATE');
+  try {
+    const row = sqlite.prepare(`
+      SELECT COUNT(*) AS total FROM analysis_runs
+      WHERE user_id = ? AND source_type = 'quota_placeholder' AND substr(created_at, 1, 10) = ?
+    `).get(userId, localDateKey());
+    const used = row ? row.total : 0;
+    if (used >= limit) {
+      sqlite.exec('COMMIT');
+      return { allowed: false, used };
+    }
+    sqlite.prepare(`
+      INSERT INTO analysis_runs (id, user_id, source_type, file_name, result_json, created_at)
+      VALUES (?, ?, 'quota_placeholder', '配额占位', '{}', ?)
+    `).run(crypto.randomUUID(), userId, new Date().toISOString());
+    sqlite.exec('COMMIT');
+    return { allowed: true, used: used + 1 };
+  } catch (error) {
+    sqlite.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function refundDailyQuota(userId) {
+  sqlite.exec('BEGIN IMMEDIATE');
+  try {
+    const row = sqlite.prepare(`
+      SELECT id FROM analysis_runs
+      WHERE user_id = ? AND source_type = 'quota_placeholder' AND substr(created_at, 1, 10) = ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(userId, localDateKey());
+    if (!row) {
+      sqlite.exec('COMMIT');
+      return { refunded: false };
+    }
+    sqlite.prepare('DELETE FROM analysis_runs WHERE id = ?').run(row.id);
+    sqlite.exec('COMMIT');
+    return { refunded: true };
+  } catch (error) {
+    sqlite.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 function recordRun(userId, runType, title, result) {
@@ -149,7 +208,7 @@ function listHistory(userId) {
 }
 
 function getHistoryItem(userId, id) {
-  const row = sqlite.prepare('SELECT * FROM analysis_runs WHERE id = ? AND user_id = ?').get(id, userId);
+  const row = sqlite.prepare('SELECT * FROM analysis_runs WHERE user_id = ? AND id = ?').get(userId, id);
   if (!row) return null;
   return {
     id: row.id,
@@ -161,16 +220,59 @@ function getHistoryItem(userId, id) {
 }
 
 function deleteHistoryItem(userId, id) {
-  return sqlite.prepare('DELETE FROM analysis_runs WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
+  const result = sqlite.prepare('DELETE FROM analysis_runs WHERE user_id = ? AND id = ?').run(userId, id);
+  if (result.changes === 0) {
+    const error = new Error('记录不存在或已被删除');
+    error.status = 404;
+    error.code = 'HISTORY_ITEM_NOT_FOUND';
+    throw error;
+  }
+  return true;
+}
+
+function clearUserData(userId) {
+  sqlite.exec('BEGIN IMMEDIATE');
+  try {
+    const { learningStore } = require('./learning-store');
+    learningStore.clearUserData(userId, { skipTransaction: true });
+    // 空数据属于合法业务场景：changes 为 0 时不抛异常
+    const removedRuns = sqlite.prepare('DELETE FROM analysis_runs WHERE user_id = ?').run(userId).changes;
+    const releasedCodes = sqlite.prepare('UPDATE membership_codes SET used_by = NULL, used_at = NULL WHERE used_by = ?').run(userId).changes;
+    sqlite.exec('COMMIT');
+    return { removedRuns: Number(removedRuns) || 0, releasedCodes: Number(releasedCodes) || 0 };
+  } catch (error) {
+    sqlite.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function assertUserExists(userId) {
+  const row = sqlite.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!row) {
+    const error = new Error('账号不存在或已注销');
+    error.status = 404;
+    error.code = 'ACCOUNT_NOT_FOUND';
+    throw error;
+  }
+  return row;
 }
 
 function deleteUserData(userId) {
   sqlite.exec('BEGIN IMMEDIATE');
   try {
+    assertUserExists(userId);
+    const deletedUser = sqlite.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    if (!deletedUser.changes) {
+      const error = new Error('账号删除失败，未匹配到任何账号');
+      error.status = 404;
+      error.code = 'ACCOUNT_DELETE_FAILED';
+      throw error;
+    }
     sqlite.prepare('DELETE FROM analysis_runs WHERE user_id = ?').run(userId);
     sqlite.prepare('DELETE FROM api_keys WHERE user_id = ?').run(userId);
     sqlite.prepare('UPDATE membership_codes SET used_by = NULL, used_at = NULL WHERE used_by = ?').run(userId);
-    sqlite.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    const { learningStore } = require('./learning-store');
+    learningStore.clearUserData(userId, { skipTransaction: true });
     sqlite.exec('COMMIT');
   } catch (error) {
     sqlite.exec('ROLLBACK');
@@ -191,8 +293,11 @@ module.exports = {
   redeemMembership,
   todayRunCount,
   recordRun,
+  claimDailyQuota,
+  refundDailyQuota,
   listHistory,
   getHistoryItem,
   deleteHistoryItem,
+  clearUserData,
   deleteUserData
 };

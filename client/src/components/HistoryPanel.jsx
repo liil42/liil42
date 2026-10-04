@@ -103,6 +103,19 @@ export default function HistoryPanel({ refreshKey = 0 }) {
     }
   }
 
+  async function deleteSession(item) {
+    if (!window.confirm(`删除「${item.fileName}」这条学习记录吗？删除后无法恢复。`)) return;
+    setError('');
+    try {
+      await api(`/api/learning/sessions/${item.id}`, { method: 'DELETE' });
+      if (activeSession?.id === item.id) setActiveSession(null);
+      setNotice('学习记录已删除');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function assignCategory(sessionId, categoryId) {
     setError('');
     try {
@@ -210,6 +223,9 @@ export default function HistoryPanel({ refreshKey = 0 }) {
                     <Trash2 size={14} />
                   </button>
                 )}
+                <button className="icon-btn danger" title="删除这条学习记录" onClick={() => deleteSession(item)}>
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
           ))}

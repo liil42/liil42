@@ -52,7 +52,9 @@ async function analyzeError(keyRecord, code, log) {
     keyRecord.provider,
     keyRecord.baseUrl,
     keyRecord.model,
-    errorMessages(code, log)
+    errorMessages(code, log),
+    0.2,
+    false
   );
 }
 
@@ -62,7 +64,9 @@ async function analyzeUrl(keyRecord, url, pageInfo) {
     keyRecord.provider,
     keyRecord.baseUrl,
     keyRecord.model,
-    urlMessages(url, pageInfo)
+    urlMessages(url, pageInfo),
+    0.2,
+    false
   );
 }
 
@@ -87,7 +91,9 @@ async function analyzeProject(keyRecord, files, focus) {
       keyRecord.provider,
       keyRecord.baseUrl,
       keyRecord.model,
-      projectDeepMessages(files, 1, 1, focus)
+      projectDeepMessages(files, 1, 1, focus),
+      0.2,
+      false
     );
   }
 
@@ -97,7 +103,9 @@ async function analyzeProject(keyRecord, files, focus) {
     keyRecord.provider,
     keyRecord.baseUrl,
     keyRecord.model,
-    projectMapMessages(files, focus)
+    projectMapMessages(files, focus),
+    0.2,
+    false
   );
   parts.push(mapReport);
 
@@ -108,7 +116,9 @@ async function analyzeProject(keyRecord, files, focus) {
       keyRecord.provider,
       keyRecord.baseUrl,
       keyRecord.model,
-      projectDeepMessages(chunks[i], i + 1, chunks.length, focus)
+      projectDeepMessages(chunks[i], i + 1, chunks.length, focus),
+      0.2,
+      false
     );
     parts.push(`\n\n## 第 ${i + 1} / ${chunks.length} 批深入分析\n\n${deepReport}`);
   }
