@@ -21,7 +21,7 @@ migration/
 *.sqlite
 *.sqlite3
 *.exe
-step-*.png
+/step-*.png
 tmp-*.txt
 tmp-*.js
 tmp-*.json
